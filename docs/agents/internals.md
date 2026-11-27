@@ -75,20 +75,21 @@ Placeholders such as `<topic>` in prose are escaped (`\<topic\>`) or put in back
 
 - `go install <pkg>@<version>` lines in `tasks/go.yaml`
 - Task's version in `.github/actions/setup-task/action.yml`
-- `<TOOL>_VERSION` env values and octocov's `version` input in workflows, marked with a trailing `# <datasource>/<depName>` comment, e.g. `GORELEASER_VERSION: v2.0.0 # github-releases/goreleaser/goreleaser`
+- `<TOOL>_VERSION` env values and octocov's `version` input in workflows, quoted or not, marked with a trailing `# <datasource>/<depName>` comment, e.g. `GORELEASER_VERSION: v2.0.0 # github-releases/goreleaser/goreleaser`
 
 Updates are grouped into one pull request per group:
 
 | Group | What it holds |
 |---|---|
-| `go` | Go modules (including tools pinned with `go install`), the Go version, and the devcontainer base image |
+| `go` | Go modules, and tools pinned with `go install` other than golangci-lint |
+| `go-toolchain` | The Go version (the `go` directive in `go.mod`), the devcontainer base image, and golangci-lint |
 | `ci` | GitHub Actions, prek hooks, and CI tools pinned through `github-releases` comments (Task, prek, octocov, goreleaser) |
 | `unleash` | The `unleashorg/unleash-server` image and the `github.com/Unleash/unleash-go-sdk` module |
 
 Minor, patch, pin and digest updates automerge once CI passes, except for the cases below. Major updates never automerge. These always need a human:
 
-- major updates of Go modules and the devcontainer base image
-- any update of the Go version (the `go` directive in `go.mod`), because it must land together with the devcontainer base image tag: the devcontainer's golangci-lint is built with the image's Go, and golangci-lint fails on a `go` directive newer than the Go it was built with
+- major updates of Go modules
+- any update in the `go-toolchain` group, because its parts must move together: the devcontainer's golangci-lint comes from the base image and is built with the image's Go, golangci-lint fails on a `go` directive newer than the Go it was built with, and CI's golangci-lint pin must match the image's
 - major updates of compose images (Postgres and the seed's Python image), because a new major can drop support that the pinned Unleash or the seed script relies on
 - any update in the `unleash` group, because the integration tests are the only guard against behaviour changes there. Upgrade the seed script with the server image, since it uses the Admin API.
 

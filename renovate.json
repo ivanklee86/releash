@@ -27,18 +27,7 @@
       "matchDatasources": [
         "golang-version"
       ],
-      "rangeStrategy": "bump",
-      "groupName": "go"
-    },
-    {
-      "matchManagers": [
-        "dockerfile"
-      ],
-      "matchPackageNames": [
-        "golang",
-        "ghcr.io/ivanklee86/devcontainer/go"
-      ],
-      "groupName": "go"
+      "rangeStrategy": "bump"
     },
     {
       "description": "Compose images and the devcontainer base image are pinned by tag and digest",
@@ -79,10 +68,29 @@
       "platformAutomerge": true
     },
     {
-      "description": "A go directive bump must land with the devcontainer base image tag, because the devcontainer golangci-lint is built with the image Go",
+      "description": "The Go version, the devcontainer base image and golangci-lint move together in go-toolchain and need a human: the devcontainer golangci-lint comes from the base image and is built with its Go, so CI must not drift from it",
       "matchDatasources": [
         "golang-version"
       ],
+      "groupName": "go-toolchain",
+      "automerge": false
+    },
+    {
+      "matchManagers": [
+        "dockerfile"
+      ],
+      "matchPackageNames": [
+        "golang",
+        "ghcr.io/ivanklee86/devcontainer/go"
+      ],
+      "groupName": "go-toolchain",
+      "automerge": false
+    },
+    {
+      "matchPackageNames": [
+        "github.com/golangci/golangci-lint/**"
+      ],
+      "groupName": "go-toolchain",
       "automerge": false
     },
     {
@@ -126,8 +134,8 @@
         "/^\\.github/workflows/[^/]+\\.ya?ml$/"
       ],
       "matchStrings": [
-        "[A-Z0-9_]+_VERSION: (?<currentValue>v?\\d\\S*) # (?<datasource>[^/\\s]+)/(?<depName>\\S+)",
-        "version: (?<currentValue>v?\\d\\S*) # (?<datasource>[^/\\s]+)/(?<depName>k1LoW/octocov)\\s"
+        "[A-Z0-9_]+_VERSION: ['\"]?(?<currentValue>v?\\d[^'\"\\s]*)['\"]? # (?<datasource>[^/\\s]+)/(?<depName>\\S+)",
+        "version: ['\"]?(?<currentValue>v?\\d[^'\"\\s]*)['\"]? # (?<datasource>[^/\\s]+)/(?<depName>k1LoW/octocov)\\s"
       ]
     }
   ]
