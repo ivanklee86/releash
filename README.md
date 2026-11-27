@@ -5,8 +5,10 @@ A small CLI to drive CI/CD changes via Unleash feature flags
 
 releash is in early development. It prints help and its version, and the `check` command arrives in a later milestone (see [`docs/agents/milestones`](docs/agents/milestones)).
 
+Install a pinned version. There are no releases before v0.1.0, so until then pin a commit SHA.
+
 ```sh
-go install github.com/ivanklee86/releash@latest
+go install github.com/ivanklee86/releash@<version>
 
 releash --help     # general help, exit 0
 releash --version  # installed version, exit 0

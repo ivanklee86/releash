@@ -28,8 +28,7 @@ func main() {
 	os.Exit(execute(os.Args[1:], os.Stdout, os.Stderr, resolveVersion(version, debug.ReadBuildInfo)))
 }
 
-// execute runs the CLI with args and returns the process exit code. It is the
-// only place that turns cobra errors into exit codes.
+// execute runs the CLI with args and returns the process exit code.
 func execute(args []string, stdout, stderr io.Writer, version string) int {
 	r := releash.New()
 	r.Out = stdout
@@ -39,6 +38,20 @@ func execute(args []string, stdout, stderr io.Writer, version string) int {
 	cmd.SetArgs(args)
 	cmd.SetOut(stdout)
 	cmd.SetErr(stderr)
+	return run(cmd, stderr)
+}
+
+// run executes cmd and returns its exit code. It is the only place that turns
+// cobra errors and panics into exit codes: a panic in a command is reported on
+// stderr and exits 1 (ADR 0004), rather than Go's default of 2, which would
+// look like a bad command line.
+func run(cmd *cobra.Command, stderr io.Writer) (code int) {
+	defer func() {
+		if p := recover(); p != nil {
+			_, _ = fmt.Fprintf(stderr, "Error: internal error: %v\n", p)
+			code = releash.ExitInternal
+		}
+	}()
 
 	if err := cmd.Execute(); err != nil {
 		// Until releash has commands, every error cobra returns comes from

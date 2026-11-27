@@ -23,9 +23,10 @@ const (
 // variables. It has no fields until the check command arrives.
 type Config struct{}
 
-// Releash runs releash commands. Its methods write to Out and Err and return
-// an exit code instead of calling os.Exit. A Releash is not safe for
-// concurrent use.
+// Releash holds the configuration and output writers that releash commands
+// run with. Commands, starting with check in M3, are methods that write to Out
+// and Err and return an exit code instead of calling os.Exit. A Releash is not
+// safe for concurrent use.
 type Releash struct {
 	*Config
 

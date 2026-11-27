@@ -126,6 +126,23 @@ func TestExecute(t *testing.T) {
 	}
 }
 
+func TestRunRecoversPanics(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	cmd := &cobra.Command{
+		Use: "panics",
+		Run: func(*cobra.Command, []string) { panic("boom") },
+	}
+	cmd.SetArgs(nil)
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+
+	code := run(cmd, &stderr)
+
+	assert.Equal(t, releash.ExitInternal, code, "exit code")
+	assert.Empty(t, stdout.String(), "stdout")
+	assert.Contains(t, stderr.String(), "boom", "stderr")
+}
+
 func TestResolveVersion(t *testing.T) {
 	tests := []struct {
 		name          string
