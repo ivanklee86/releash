@@ -2,6 +2,9 @@ package main
 
 import (
 	"bytes"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
@@ -25,20 +28,40 @@ import (
 //   - invalid context values exit 4, repeated context options exit 5
 //   - defaults are not duplicates, property values keep '=' and commas
 //   - the lowest exit code wins
-//   - every exit prints exactly "false\n", and --loud never changes stdout,
-//     the exit code or the error lines
+//   - every exit prints exactly "false\n" (valid cases check the unknown flag
+//     x against a fake Unleash), and --loud never changes stdout, the exit
+//     code or the error lines
+//   - an enabled flag prints "true\n" and nothing on stderr, even with --loud
 //   - --help shows releash options, then context options
 //   - --version prints the version and exits 0 on check as on the root
 //   - a panic prints "false" and exits 1
 
 const (
-	testURL   = "https://unleash.example.com/api"
 	testToken = "default:production.abc123"
-	loudLine  = "releash: evaluation is not implemented yet (M4); returning false\n"
+	loudLine  = "releash: flag \"x\" not found; returning false\n"
 	checkHelp = "Run 'releash check --help' for usage.\n"
 	noURL     = "releash: no Unleash URL: set UNLEASH_URL or --url to the Unleash API URL\n"
 	noToken   = "releash: no Unleash API token: set UNLEASH_API_TOKEN or --token to a client API token\n"
 )
+
+// testURL is the API URL of a fake Unleash that TestMain starts, so valid
+// checks need no network. Its only flag is enabled-everywhere, which is on
+// for everyone.
+var testURL string
+
+func TestMain(m *testing.M) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/client/features" {
+			_, _ = io.WriteString(w, `{"version":2,"features":[{"name":"enabled-everywhere","enabled":true,"strategies":[{"name":"default"}]}]}`)
+			return
+		}
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	testURL = srv.URL + "/api"
+	code := m.Run()
+	srv.Close()
+	os.Exit(code)
+}
 
 // unleashEnv sets UNLEASH_URL and UNLEASH_API_TOKEN to the values in env for
 // the rest of the test, and unsets whichever env leaves out.
@@ -72,7 +95,7 @@ func TestCheckCommand(t *testing.T) {
 		wantStderr       string
 		wantStderrPrefix string
 	}{
-		{name: "URL and token from the environment", env: configured, args: []string{"check", "enabled-everywhere"}, wantCode: releash.ExitOK},
+		{name: "URL and token from the environment", env: configured, args: []string{"check", "x"}, wantCode: releash.ExitOK},
 		{name: "URL and token from options", args: []string{"check", "x", "--url", testURL, "--token", testToken}, wantCode: releash.ExitOK},
 		{name: "--loud explains the answer", env: configured, args: []string{"check", "x", "--loud"}, loud: true, wantCode: releash.ExitOK, wantStderr: loudLine},
 		{name: "options before the flag name", env: configured, args: []string{"check", "--loud", "--env", "staging", "x"}, loud: true, wantCode: releash.ExitOK, wantStderr: loudLine},
@@ -189,6 +212,21 @@ func TestCheckCommand(t *testing.T) {
 				assert.Equal(t, wantStderr, stderr.String(), "stderr")
 			})
 		}
+	}
+}
+
+func TestCheckPrintsTheEvaluatedAnswer(t *testing.T) {
+	for _, args := range [][]string{{"check", "enabled-everywhere"}, {"check", "enabled-everywhere", "--loud"}} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			unleashEnv(t, map[string]string{"UNLEASH_URL": testURL, "UNLEASH_API_TOKEN": testToken})
+			var stdout, stderr bytes.Buffer
+
+			code := execute(args, &stdout, &stderr, "dev")
+
+			assert.Equal(t, releash.ExitOK, code, "exit code")
+			assert.Equal(t, "true\n", stdout.String(), "stdout")
+			assert.Empty(t, stderr.String(), "stderr")
+		})
 	}
 }
 

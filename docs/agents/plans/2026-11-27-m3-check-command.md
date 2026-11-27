@@ -1,10 +1,10 @@
 # Plan: M3 check command contract
 
-Started 2026-11-27. Status: in progress. Milestone: [M3](../milestones/M3-check-command-contract.md).
+Started 2026-11-27. Status: done. Milestone: [M3](../milestones/M3-check-command-contract.md).
 
 ## Resume here
 
-Updated 2026-11-27. PR 1 (the `check` command) is implemented and committed on branch `m3/check`, not yet pushed. `task`, `prek run --all-files` and `task go:test-integration` pass locally. Next: the user runs `/ship` for PR 1; once it is merged, do the close-out step. When resuming, start the first PR in [Steps](#steps) that is not checked off and whose dependencies are merged. Before ending a session, update this section and check off finished steps.
+Updated 2026-11-27. M3 is done: PR 1 (the `check` command, #15) merged, and the close-out was folded into M4 PR 1 (`m4/evaluate`). Nothing is left to resume here; M4 continues in [its plan](2026-11-27-m4-unleash-evaluation.md).
 
 Decisions made while building PR 1, within the ones below:
 
@@ -54,4 +54,4 @@ Decisions made while planning:
 
 ### Close out
 
-- [ ] Every M3 exit criterion holds. Set M3 to `done`, check off its scope, and update this plan's status.
+- [x] Every M3 exit criterion holds. Set M3 to `done`, check off its scope, and update this plan's status. Done on 2026-11-27 in M4 PR 1 (`m4/evaluate`), after PR 1 (#15) merged.

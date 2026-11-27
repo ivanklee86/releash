@@ -1,6 +1,7 @@
 package releash
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/netip"
@@ -58,10 +59,6 @@ var standardFields = map[string]string{
 	"remoteAddress": OptionRemoteAddress,
 	"currentTime":   OptionCurrentTime,
 }
-
-// notImplementedLine is the --loud line for a valid check until evaluation
-// lands in M4, which removes it.
-const notImplementedLine = "releash: evaluation is not implemented yet (M4); returning false"
 
 // CheckOptions is what the command line and environment gave releash check,
 // before validation. Check validates it and applies defaults.
@@ -125,16 +122,19 @@ type problem struct {
 	msg  string
 }
 
-// Check validates opts and answers whether opts.Flag is enabled. The answer
-// is always false until evaluation lands in M4.
+// Check validates opts and answers whether opts.Flag is enabled in Unleash.
 //
-// Check writes exactly "false\n" to Out, whatever the outcome. It writes each
-// problem it finds in opts to Err as a "releash: " line, with or without
-// opts.Loud, and returns the lowest exit code among them (ADR 0004), so the
-// code does not depend on validation order. A valid invocation returns ExitOK
-// and writes nothing to Err unless opts.Loud is set.
+// Check writes exactly "true\n" or "false\n" to Out. It writes each problem
+// it finds in opts to Err as a "releash: " line, with or without opts.Loud,
+// and returns the lowest exit code among them (ADR 0004), so the code does
+// not depend on validation order; the answer is then false and Unleash is not
+// contacted. A valid invocation returns ExitOK, also when the answer falls
+// back to false because Unleash could not give one (spec 0001), and finishes
+// within its timeout. It writes nothing to Err unless opts.Loud is set, and
+// then one line for each problem that did not change the answer and one for
+// the reason the answer fell back to false.
 func (r *Releash) Check(opts CheckOptions) int {
-	_, problems := validateCheck(opts)
+	req, problems := validateCheck(opts)
 
 	code := ExitOK
 	for _, p := range problems {
@@ -143,15 +143,29 @@ func (r *Releash) Check(opts CheckOptions) int {
 			code = p.code
 		}
 	}
-	switch {
-	case code == ExitUsage:
-		_, _ = fmt.Fprintln(r.Err, "Run 'releash check --help' for usage.")
-	case code == ExitOK && opts.Loud:
-		_, _ = fmt.Fprintln(r.Err, notImplementedLine)
+	if code != ExitOK {
+		if code == ExitUsage {
+			_, _ = fmt.Fprintln(r.Err, "Run 'releash check --help' for usage.")
+		}
+		_, _ = fmt.Fprintln(r.Out, "false")
+		return code
 	}
 
-	_, _ = fmt.Fprintln(r.Out, "false")
-	return code
+	eval := r.evaluate
+	if eval == nil {
+		eval = evaluate
+	}
+	out := eval(context.Background(), req)
+	if req.loud {
+		for _, note := range out.notes {
+			_, _ = fmt.Fprintf(r.Err, "releash: %s\n", note)
+		}
+		if out.fallback != "" {
+			_, _ = fmt.Fprintf(r.Err, "releash: %s\n", out.fallback)
+		}
+	}
+	_, _ = fmt.Fprintln(r.Out, out.enabled && out.fallback == "")
+	return ExitOK
 }
 
 // validateCheck returns opts as a checkRequest and every problem in it. The

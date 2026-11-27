@@ -2,6 +2,7 @@ package releash
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -14,8 +15,9 @@ import (
 // Cases, from the exit code table and test plan in spec 0001:
 //   - valid: minimal options, every option once, options set to their
 //     defaults, valid durations, timestamps (including lowercase, leap seconds
-//     and an explicit zero time) and addresses, '=' in property
-//     values, empty property values; silent without --loud, one line with it
+//     and an explicit zero time) and addresses, '=' in property values, empty
+//     property values; each reaches evaluation, which a stub answers here
+//     (evaluate_test.go covers evaluation itself)
 //   - 2: missing flag name, invalid --timeout, each releash option twice
 //   - 3: missing URL, missing token
 //   - 4: malformed URL or port, invalid --current-time (including offsets
@@ -24,7 +26,8 @@ import (
 //     property named after each standard field (with the hint)
 //   - 5: each context option twice, a repeated property name
 //   - precedence: the lowest code wins whatever the order of the mistakes
-//   - every outcome prints exactly "false\n" and reports errors without --loud
+//   - every error prints exactly "false\n", reports errors without --loud,
+//     and never reaches evaluation
 
 // validOptions returns options that pass validation, with every field that
 // has a default left unset.
@@ -383,6 +386,11 @@ func TestCheck(t *testing.T) {
 				var stdout, stderr bytes.Buffer
 				r := New()
 				r.Out, r.Err = &stdout, &stderr
+				evaluated := false
+				r.evaluate = func(context.Context, checkRequest) outcome {
+					evaluated = true
+					return outcome{}
+				}
 				opts := tt.opts
 				opts.Loud = loud
 
@@ -390,11 +398,8 @@ func TestCheck(t *testing.T) {
 
 				assert.Equal(t, tt.wantCode, code, "exit code")
 				assert.Equal(t, "false\n", stdout.String(), "stdout")
-				want := tt.wantStderr
-				if tt.wantCode == ExitOK && loud {
-					want = []string{"releash: evaluation is not implemented yet (M4); returning false"}
-				}
-				assert.Equal(t, lines(want), stderr.String(), "stderr")
+				assert.Equal(t, lines(tt.wantStderr), stderr.String(), "stderr")
+				assert.Equal(t, tt.wantCode == ExitOK, evaluated, "Unleash is asked only for a valid invocation")
 			})
 		}
 	}
@@ -408,8 +413,8 @@ func lines(ls []string) string {
 	return strings.Join(ls, "\n") + "\n"
 }
 
-// The evaluation context is not observable until M4 evaluates flags, so these
-// cases check what Check would evaluate against.
+// These cases check the request Check hands to evaluation; evaluate_test.go
+// checks that each field reaches the SDK.
 func TestValidateCheckAppliesDefaults(t *testing.T) {
 	req, problems := validateCheck(validOptions())
 

@@ -42,6 +42,10 @@ type Releash struct {
 	Out io.Writer
 	// Err receives errors and diagnostics. It defaults to os.Stderr.
 	Err io.Writer
+
+	// evaluate answers a validated check. Nil means evaluate, which asks
+	// Unleash; tests of validation replace it so they need no server.
+	evaluate evaluator
 }
 
 // New returns a Releash with an empty Config that writes to os.Stdout and
