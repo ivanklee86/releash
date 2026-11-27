@@ -104,7 +104,7 @@ func evaluate(ctx context.Context, req checkRequest) outcome {
 	}
 
 	var out outcome
-	var metricsNote string
+	var metricsNote, addressNote string
 	fetched := false
 	select {
 	case <-events.ready:
@@ -114,13 +114,8 @@ func evaluate(ctx context.Context, req checkRequest) outcome {
 			break
 		}
 		fetched = true
-		var note string
-		req.context, note = withRemoteAddress(req.context, local.address())
+		req.context, addressNote = withRemoteAddress(req.context, local.address())
 		out = evaluateFlag(client, req)
-		// The address plays no part in a fallback such as an unknown flag.
-		if note != "" && out.fallback == "" {
-			out.notes = append(out.notes, note)
-		}
 		// A fallback has no usage worth waiting to report.
 		if out.fallback == "" {
 			var err error
@@ -144,6 +139,12 @@ func evaluate(ctx context.Context, req checkRequest) outcome {
 		if err := evaluationError(client, events); err != nil {
 			out = out.evaluationFailed(req.flag, err)
 		}
+	}
+
+	// The address plays no part in a fallback, such as an unknown flag or one
+	// the SDK could not evaluate.
+	if addressNote != "" && out.fallback == "" {
+		out.notes = append(out.notes, addressNote)
 	}
 
 	// When the fetch failed, the register request usually failed for the same
@@ -360,9 +361,11 @@ func (l *sdkListener) OnUpdate() {}
 // reports transport errors of register and metrics requests here too, as a
 // *url.Error. Their HTTP status errors go to OnWarning. After ready, any
 // *url.Error is from a register or metrics request, whatever its path, since
-// the one feature fetch is done.
+// the one feature fetch is done. Before ready, an error naming a redirect hop
+// that both the fetch and a register or metrics request went through counts
+// as theirs unless the transport saw the fetch itself fail.
 func (l *sdkListener) OnError(err error) {
-	if (l.isReady() && !isEvaluationError(err)) || l.log.notFromTheFetch(err) {
+	if l.isReady() && !isEvaluationError(err) {
 		l.signalMetricsProblem()
 		return
 	}
@@ -371,6 +374,11 @@ func (l *sdkListener) OnError(err error) {
 		l.signalMetricsProblem()
 		return
 	case registerPath:
+		return
+	}
+	if l.log.notFromTheFetch(err) {
+		// It may be a metrics error; awaitMetrics reads the outcome from the log.
+		l.signalMetricsProblem()
 		return
 	}
 	select {
@@ -416,11 +424,12 @@ func (l *requestLog) backgroundRequest(err error) string {
 	return ""
 }
 
-// notFromTheFetch reports whether err, a *url.Error naming a redirect hop
-// that is not the features path, cannot be from the feature fetch because
-// the transport saw no error on it. A hop path that both the feature fetch
-// and a register or metrics request went through is otherwise ambiguous.
-// l may be nil.
+// notFromTheFetch reports whether err is a *url.Error naming a redirect hop
+// that a register or metrics request went through, other than the features
+// path, while the transport saw no error on the feature fetch. Such a hop
+// path may be one the feature fetch shares. An error naming a hop only the
+// fetch took, such as one http.Client raises itself after too many
+// redirects, stays the fetch's. l may be nil.
 func (l *requestLog) notFromTheFetch(err error) bool {
 	var ue *url.Error
 	if l == nil || !errors.As(err, &ue) {
@@ -430,7 +439,10 @@ func (l *requestLog) notFromTheFetch(err error) bool {
 	if perr != nil || strings.HasSuffix(u.Path, featuresPath) {
 		return false
 	}
-	return l.outcome(featuresPath).err == nil
+	l.mu.Lock()
+	background := l.backgroundHops[u.Path]
+	l.mu.Unlock()
+	return background && l.outcome(featuresPath).err == nil
 }
 
 // requestOutcome is what the transport saw of one request: an HTTP status, or
@@ -452,6 +464,9 @@ type requestLog struct {
 	// started its redirect chain: featuresPath, registerPath or metricsPath.
 	// A path that a feature fetch went through stays featuresPath.
 	hops map[string]string
+	// backgroundHops holds every hop path of a register or metrics request,
+	// including those a feature fetch also went through.
+	backgroundHops map[string]bool
 }
 
 type loggedRequest struct {
@@ -474,6 +489,12 @@ func (l *requestLog) record(req *http.Request, o requestOutcome) {
 		}
 		if l.hops[req.URL.Path] != featuresPath {
 			l.hops[req.URL.Path] = p
+		}
+		if p != featuresPath {
+			if l.backgroundHops == nil {
+				l.backgroundHops = make(map[string]bool)
+			}
+			l.backgroundHops[req.URL.Path] = true
 		}
 		if prev, seen := l.first[p]; seen && prev.origin != origin {
 			continue

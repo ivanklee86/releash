@@ -5,9 +5,11 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // Cases for the automatic remoteAddress from spec 0001:
@@ -100,14 +102,15 @@ func TestCheckUsesTheAddressOfTheRedirectTarget(t *testing.T) {
 }
 
 // serveOnLoopback serves handler on addr, a loopback address with port 0,
-// and returns its URL. It skips the test when the host cannot listen there,
-// e.g. when it has no IPv6 loopback.
+// and returns its URL. It skips the test when addr is IPv6 and the host has
+// no IPv6 loopback, and fails it when the host cannot listen on IPv4.
 func serveOnLoopback(t *testing.T, handler http.HandlerFunc, addr string) string {
 	t.Helper()
 	ln, err := net.Listen("tcp", addr)
-	if err != nil {
+	if err != nil && strings.HasPrefix(addr, "[") {
 		t.Skipf("cannot listen on %s: %v", addr, err)
 	}
+	require.NoError(t, err, "listening on %s", addr)
 	srv := httptest.NewUnstartedServer(handler)
 	_ = srv.Listener.Close()
 	srv.Listener = ln

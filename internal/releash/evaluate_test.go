@@ -38,6 +38,7 @@ import (
 //     under --loud
 //   - a register request answered with 300 counts as registered, as the SDK
 //     counts it
+//   - a feature fetch caught in a redirect loop falls back at once
 //   - a register request that fails after redirect hops does not change the
 //     answer
 //   - a register request that never finishes, directly or after a redirect,
@@ -612,4 +613,30 @@ func TestCheckIgnoresARegistrationThatFailsOnAHopTheFetchShares(t *testing.T) {
 		assert.Equal(t, "true\n", stdout)
 		assert.NotContains(t, stderr, "returning false")
 	}
+}
+
+func TestCheckFallsBackAtOnceWhenTheFetchRedirectsInALoop(t *testing.T) {
+	// http.Client gives up after ten redirects with an error that names a hop
+	// only the feature fetch took, with no transport error behind it.
+	var srv *httptest.Server
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/client/features", "/b":
+			http.Redirect(w, r, srv.URL+"/a", http.StatusTemporaryRedirect)
+		case "/a":
+			http.Redirect(w, r, srv.URL+"/b", http.StatusTemporaryRedirect)
+		default:
+			w.WriteHeader(http.StatusAccepted)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	start := time.Now()
+	stdout, stderr, code := runCheck(t, srv.URL+"/api", "on", true, set(OptionTimeout, timeout, "2s"))
+	elapsed := time.Since(start)
+
+	assert.Equal(t, ExitOK, code)
+	assert.Equal(t, "false\n", stdout)
+	assert.Equal(t, "releash: unleash answered the feature fetch with HTTP 307; returning false\n", stderr)
+	assert.Less(t, elapsed, time.Second, "falls back without waiting for --timeout")
 }
