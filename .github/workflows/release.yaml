@@ -73,6 +73,31 @@ jobs:
         registry: ghcr.io
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
+    - name: Check the tap token
+      # goreleaser publishes the GitHub release and the image before it pushes the cask, so a tap
+      # token that cannot push would leave a half-published release (v0.1.1 was published without
+      # its cask and SBOM attestations this way). A dry-run push makes GitHub check push access to
+      # the tap, as the cask step needs it, without sending anything.
+      id: preflight
+      env:
+        TAP_TOKEN: ${{ secrets.HOMEBREW_AUTH_TOKEN }}
+      run: |
+        set -euo pipefail
+        if [[ "${GITHUB_REF_NAME}" == *-* ]]; then
+          echo "${GITHUB_REF_NAME} is a prerelease, which publishes no cask"
+          exit 0
+        fi
+        if [[ -z "${TAP_TOKEN}" ]]; then
+          echo "::error::the HOMEBREW_AUTH_TOKEN secret is empty"
+          exit 1
+        fi
+        auth=$(printf 'x-access-token:%s' "${TAP_TOKEN}" | base64 -w0)
+        echo "::add-mask::${auth}"
+        if ! git -c credential.helper= -c "http.https://github.com/.extraheader=AUTHORIZATION: basic ${auth}" \
+            push --dry-run --quiet https://github.com/ivanklee86/homebrew-tap.git HEAD:refs/heads/releash-preflight-probe; then
+          echo "::error::HOMEBREW_AUTH_TOKEN cannot push to ivanklee86/homebrew-tap"
+          exit 1
+        fi
     - name: Run goreleaser
       uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
       with:
@@ -88,6 +113,9 @@ jobs:
         # release on the commit of its last rc would rebuild the rc.
         GORELEASER_CURRENT_TAG: ${{ github.ref_name }}
     - name: Attest the image SBOMs
+      # Runs even when goreleaser failed after the checks passed: by the time a late goreleaser step
+      # such as the cask fails, the image is already public, and it should not stay unattested.
+      if: ${{ !cancelled() && steps.preflight.outcome == 'success' }}
       # goreleaser's sboms cover only the archives and docker_signs attaches no SBOM, so the image's
       # SPDX SBOMs are generated and attached here. Each platform image gets an SBOM of its own
       # contents. The multi-arch digest, which spec 0002 tells users to verify, gets the linux/amd64
@@ -96,6 +124,10 @@ jobs:
       run: |
         set -euo pipefail
         sha256='^sha256:[0-9a-f]{64}$'
+        if [[ ! -f dist/metadata.json ]]; then
+          echo "::error::goreleaser stopped before it wrote dist/metadata.json, so there is no image to attest"
+          exit 1
+        fi
         version=$(jq -er .version dist/metadata.json)
         if [[ "${version}" != "${GITHUB_REF_NAME#v}" ]]; then
           echo "::error::goreleaser released ${version}, not the pushed tag ${GITHUB_REF_NAME}"
@@ -104,6 +136,14 @@ jobs:
         digest=$(docker buildx imagetools inspect "${IMAGE}:${version}" --format '{{json .Manifest.Digest}}' | tr -d '"')
         if [[ ! "${digest}" =~ ${sha256} ]]; then
           echo "::error::could not read the digest of ${IMAGE}:${version}, got '${digest}'"
+          exit 1
+        fi
+        # The tag can still name an image from an earlier run if goreleaser failed before it pushed,
+        # so attest only an image built from this commit (goreleaser sets the revision label).
+        revisions=$(docker buildx imagetools inspect "${IMAGE}@${digest}" --format '{{json .Image}}' \
+          | jq -r '[.[] | .config.Labels["org.opencontainers.image.revision"]] | unique | join(" ")')
+        if [[ "${revisions}" != "${GITHUB_SHA}" ]]; then
+          echo "::error::${IMAGE}:${version} was built from '${revisions}', not ${GITHUB_SHA}; this run did not push it"
           exit 1
         fi
         platform_digests=""
@@ -125,9 +165,11 @@ jobs:
         echo "digest=${digest}" >> "${GITHUB_OUTPUT}"
         echo "platform-digests=${platform_digests# }" >> "${GITHUB_OUTPUT}"
     - name: Verify the published signatures and attestations
+      if: ${{ !cancelled() && steps.attest.outcome == 'success' }}
       # Runs spec 0002's verification against what was just published. goreleaser has already made
-      # the release, the image tags and (for non-prereleases) the cask public by now, so a failure
-      # here does not hold them back: it fails the run, so an unverifiable release is noticed at once.
+      # the release and the image tags public by now, and, unless a late goreleaser step such as the
+      # cask failed, the cask too. A failure here does not hold them back: it fails the run, so an
+      # unverifiable release is noticed at once.
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         DIGEST: ${{ steps.attest.outputs.digest }}

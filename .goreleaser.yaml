@@ -4,6 +4,11 @@ version: 2
 
 project_name: releash
 
+git:
+  # Sort v0.1.0-rc.1 below v0.1.0 when several tags point at one commit. release.yaml also sets
+  # GORELEASER_CURRENT_TAG to the pushed tag; this covers local runs and any other path.
+  prerelease_suffix: "-"
+
 builds:
   - id: releash
     binary: releash
