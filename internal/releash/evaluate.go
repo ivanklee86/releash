@@ -107,7 +107,10 @@ func evaluate(ctx context.Context, req checkRequest) outcome {
 		out = evaluateFlag(client, req)
 		// A fallback has no usage worth waiting to report.
 		if out.fallback == "" {
-			metricsNote = awaitMetrics(runCtx, events, log, req.timeout)
+			var err error
+			if metricsNote, err = awaitMetrics(runCtx, events, log, req.timeout); err != nil {
+				out = evaluationFailure(req.flag, err)
+			}
 		}
 	case err := <-events.failed:
 		out = outcome{fallback: fetchFailure(runCtx, req.timeout, log.outcome(featuresPath), err)}
@@ -123,7 +126,7 @@ func evaluate(ctx context.Context, req checkRequest) outcome {
 
 	if fetched && out.fallback == "" {
 		if err := evaluationError(client, events); err != nil {
-			out = outcome{fallback: fmt.Sprintf("unleash could not evaluate flag %q: %v; returning false", req.flag, err)}
+			out = evaluationFailure(req.flag, err)
 		}
 	}
 
@@ -134,10 +137,18 @@ func evaluate(ctx context.Context, req checkRequest) outcome {
 			out.notes = append(out.notes, note)
 		}
 	}
-	if metricsNote != "" {
+	// The SDK can report an evaluation error after the metrics wait ended,
+	// and a note that the answer is unaffected would then be wrong.
+	if metricsNote != "" && out.fallback == "" {
 		out.notes = append(out.notes, metricsNote)
 	}
 	return out
+}
+
+// evaluationFailure returns the fallback for flag after the SDK reported err
+// while evaluating it.
+func evaluationFailure(flag string, err error) outcome {
+	return outcome{fallback: fmt.Sprintf("unleash could not evaluate flag %q: %v; returning false", flag, err)}
 }
 
 // evaluateFlag evaluates req.flag with a client whose first fetch succeeded.

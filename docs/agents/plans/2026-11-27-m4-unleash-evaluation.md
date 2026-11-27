@@ -4,7 +4,7 @@ Started 2026-11-27. Status: in progress. Milestone: [M4](../milestones/M4-unleas
 
 ## Resume here
 
-Updated 2026-11-27. A spike on the v6 SDK ran first (findings below). PR 1 (evaluation) is implemented and committed on `m4/evaluate`, not yet pushed; `task`, `prek run --all-files` and `task go:test-integration` pass locally. Next: the user runs `/ship` for PR 1, and PRs 2 and 3 follow in parallel, stacked on it. When resuming, start the first PR in [Steps](#steps) that is not checked off and whose dependencies are merged. Before ending a session, update this section and check off finished steps.
+Updated 2026-11-27. Status: PR 1 merged; PR 2 implemented on `m4/metrics`; PR 3 in progress on `m4/remote-address`. A spike on the v6 SDK ran first (findings below). When resuming, start the first PR in [Steps](#steps) that is not checked off and whose dependencies are merged. Before ending a session, update this section and check off finished steps.
 
 Decisions made while building PR 1, within the ones below:
 
@@ -59,14 +59,14 @@ The spike ran the v6.5.1 SDK against the local stack and fake servers on 2026-11
 
 ### PR 2: usage metrics
 
-- [x] Branch `m4/metrics`, stacked on `m4/evaluate`. Implemented and committed, not yet pushed; `task`, `prek run --all-files` and `task go:test-integration` pass locally.
+- [x] Branch `m4/metrics`, stacked on `m4/evaluate`.
 - Contents: a short metrics interval and a wait for the SDK to confirm the send before exit, bounded by `--timeout`; a failed or hanging metrics endpoint never changes stdout or the exit code, and is reported with `--loud`; integration tests for each, using a fake metrics endpoint where the stack cannot fail on demand.
 - Milestone criteria: metrics.
 - Decisions made while building it:
   - The metrics interval is 100ms. After an evaluated answer, `awaitMetrics` (`internal/releash/metrics.go`) waits for the SDK's `OnSent`, a failed metrics request, or the end of the run context. The change to the SDK client setup is one `unleash.WithMetricsInterval` option; the rest is in the listener, the request log (which now also records `/client/metrics`) and `metrics.go`.
   - A failed send is told apart by the transport's record, not the SDK's warning text: `OnWarning` and metrics transport errors in `OnError` only wake the wait, which then reads `requestLog`.
   - The new `--loud` lines are `releash: sending usage metrics to unleash failed: <HTTP status or error>; the answer is unaffected` and `releash: sending usage metrics to unleash did not finish within <timeout>; the answer is unaffected`, after any register line.
-  - The wait has no deadline of its own below `--timeout`, as the milestone asks: a hanging metrics endpoint holds a successful check until `--timeout`. A fallback does not wait. The run context is always cancelled before `Close`, so the SDK's shutdown flush cannot retry a failed send with the rest of the budget.
+  - The wait has no deadline of its own below `--timeout`, as the milestone asks: a hanging metrics endpoint holds a successful check until `--timeout`. A fallback does not wait, including one for a flag the SDK reports it cannot evaluate: that error can arrive during the wait, which then ends at once and drops any metrics note. The run context is always cancelled before `Close`, so the SDK's shutdown flush cannot retry a failed send with the rest of the budget. The cost is that the counts are sent only on a tick: with a `--timeout` near or below 100ms, or one that the fetch and register mostly used up, a healthy Unleash gets no usage from the check and `--loud` reports that the send did not finish.
   - Unleash 8.3.1 drops usage of a flag created a few seconds after another metrics request (it filters by a cached list of flag names), so the stack scenario checks a fixture flag under a unique `--app-name`, read back through the Admin API's raw usage metrics with `integration.WaitForUsage`.
 
 ### PR 3: automatic remoteAddress

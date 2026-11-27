@@ -14,33 +14,38 @@ import (
 const metricsInterval = 100 * time.Millisecond
 
 // awaitMetrics waits until Unleash has accepted the usage metrics of an
-// evaluated flag, the metrics request fails, or runCtx ends. It returns "" for
-// an accepted send and otherwise the --loud note, without the "releash: "
-// prefix. events and log must belong to the client that evaluated the flag.
-func awaitMetrics(runCtx context.Context, events *sdkListener, log *requestLog, timeout time.Duration) string {
+// evaluated flag, the metrics request fails, the SDK reports that it could not
+// evaluate the flag, or runCtx ends. It returns "" for an accepted send and
+// otherwise the --loud note, without the "releash: " prefix. If the SDK
+// reports an evaluation error first, it returns that error and no note: the
+// answer then falls back, and a fallback does not wait for metrics. events and
+// log must belong to the client that evaluated the flag.
+func awaitMetrics(runCtx context.Context, events *sdkListener, log *requestLog, timeout time.Duration) (string, error) {
 	for {
 		select {
+		case err := <-events.failed:
+			return "", err
 		case <-events.sent:
-			return ""
+			return "", nil
 		case <-events.metricsProblem:
 			// The signal may be about another request, such as a warning
 			// about the register request; the log says whether it was ours.
 			if seen := log.outcome(metricsPath); seen.err != nil || (seen.status != 0 && !isSuccess(seen.status)) {
-				return metricsFailure(seen, timeout)
+				return metricsFailure(seen, timeout), nil
 			}
 		case <-runCtx.Done():
 			select {
 			case <-events.sent:
-				return ""
+				return "", nil
 			default:
 			}
 			seen := log.outcome(metricsPath)
 			// Unleash accepted the counts, but the deadline came before the
 			// SDK passed that on.
 			if isSuccess(seen.status) {
-				return ""
+				return "", nil
 			}
-			return metricsFailure(seen, timeout)
+			return metricsFailure(seen, timeout), nil
 		}
 	}
 }

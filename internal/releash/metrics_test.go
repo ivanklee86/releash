@@ -143,13 +143,29 @@ func TestCheckIgnoresAFailedMetricsSend(t *testing.T) {
 }
 
 func TestCheckDoesNotWaitForMetricsAfterAFallback(t *testing.T) {
-	url := fakeWithMetrics(t, featuresJSON(enabledFlag), &metricsRecorder{}, hang)
+	// The SDK cannot evaluate a strategy that names a segment it was not sent.
+	unevaluable := `{"name":"unevaluable","enabled":true,"strategies":[{"name":"default","segments":[99]}]}`
+	tests := []struct {
+		name    string
+		flag    string
+		metrics http.HandlerFunc
+		want    string
+	}{
+		{name: "unknown flag, metrics never answer", flag: "missing", metrics: hang, want: "releash: flag \"missing\" not found; returning false\n"},
+		{name: "unevaluable flag, metrics never answer", flag: "unevaluable", metrics: hang, want: "releash: unleash could not evaluate flag \"unevaluable\": segment does not exist; returning false\n"},
+		{name: "unevaluable flag, metrics fail", flag: "unevaluable", metrics: serve(http.StatusInternalServerError, ""), want: "releash: unleash could not evaluate flag \"unevaluable\": segment does not exist; returning false\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			url := fakeWithMetrics(t, featuresJSON(enabledFlag, unevaluable), &metricsRecorder{}, tt.metrics)
 
-	start := time.Now()
-	stdout, stderr, code := runCheck(t, url, "missing", true, set(OptionTimeout, timeout, "2s"))
+			start := time.Now()
+			stdout, stderr, code := runCheck(t, url, tt.flag, true, set(OptionTimeout, timeout, "2s"))
 
-	assert.Equal(t, ExitOK, code)
-	assert.Equal(t, "false\n", stdout)
-	assert.Equal(t, "releash: flag \"missing\" not found; returning false\n", stderr)
-	assert.Less(t, time.Since(start), 500*time.Millisecond)
+			assert.Equal(t, ExitOK, code)
+			assert.Equal(t, "false\n", stdout)
+			assert.Equal(t, tt.want, stderr, "only the fallback line, with no metrics note")
+			assert.Less(t, time.Since(start), 500*time.Millisecond)
+		})
+	}
 }
