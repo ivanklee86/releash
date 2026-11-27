@@ -73,6 +73,33 @@ jobs:
         registry: ghcr.io
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
+    - name: Check the tag and the tap token
+      # goreleaser publishes the GitHub release and the image before it pushes the cask, so a tag that
+      # is not on the commit being built, or a tap token that GitHub rejects, would leave a
+      # half-published release (v0.1.1 was published without its cask and SBOM attestations this way).
+      # A read of the tap proves the token is valid and can see the tap; push access is only proved
+      # by the cask step itself.
+      id: preflight
+      env:
+        TAP_TOKEN: ${{ secrets.HOMEBREW_AUTH_TOKEN }}
+      run: |
+        set -euo pipefail
+        if [[ "$(git rev-parse "${GITHUB_REF_NAME}^{commit}")" != "$(git rev-parse HEAD)" ]]; then
+          echo "::error::${GITHUB_REF_NAME} does not point at the checked-out commit"
+          exit 1
+        fi
+        if [[ "${GITHUB_REF_NAME}" == *-* ]]; then
+          echo "${GITHUB_REF_NAME} is a prerelease, which publishes no cask"
+          exit 0
+        fi
+        if [[ -z "${TAP_TOKEN}" ]]; then
+          echo "::error::the HOMEBREW_AUTH_TOKEN secret is empty"
+          exit 1
+        fi
+        if ! GH_TOKEN="${TAP_TOKEN}" gh api repos/ivanklee86/homebrew-tap --silent; then
+          echo "::error::HOMEBREW_AUTH_TOKEN cannot read ivanklee86/homebrew-tap"
+          exit 1
+        fi
     - name: Run goreleaser
       uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
       with:
@@ -88,6 +115,9 @@ jobs:
         # release on the commit of its last rc would rebuild the rc.
         GORELEASER_CURRENT_TAG: ${{ github.ref_name }}
     - name: Attest the image SBOMs
+      # Runs even when goreleaser failed after the checks passed: by the time a late goreleaser step
+      # such as the cask fails, the image is already public, and it should not stay unattested.
+      if: ${{ !cancelled() && steps.preflight.outcome == 'success' }}
       # goreleaser's sboms cover only the archives and docker_signs attaches no SBOM, so the image's
       # SPDX SBOMs are generated and attached here. Each platform image gets an SBOM of its own
       # contents. The multi-arch digest, which spec 0002 tells users to verify, gets the linux/amd64
@@ -125,6 +155,7 @@ jobs:
         echo "digest=${digest}" >> "${GITHUB_OUTPUT}"
         echo "platform-digests=${platform_digests# }" >> "${GITHUB_OUTPUT}"
     - name: Verify the published signatures and attestations
+      if: ${{ !cancelled() && steps.attest.outcome == 'success' }}
       # Runs spec 0002's verification against what was just published. goreleaser has already made
       # the release, the image tags and (for non-prereleases) the cask public by now, so a failure
       # here does not hold them back: it fails the run, so an unverifiable release is noticed at once.
