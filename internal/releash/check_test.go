@@ -216,13 +216,37 @@ func TestCheck(t *testing.T) {
 			name:       "URL with a port above 65535",
 			opts:       with(func(o *CheckOptions) { o.URL = "http://host:99999/api" }),
 			wantCode:   ExitInvalid,
-			wantStderr: []string{`releash: invalid Unleash URL "http://host:99999/api": must be an absolute http or https URL`},
+			wantStderr: []string{`releash: invalid Unleash URL "http://host:99999/api": port 99999 is not between 1 and 65535`},
 		},
 		{
 			name:       "URL with port 0",
 			opts:       with(func(o *CheckOptions) { o.URL = "http://host:0/api" }),
 			wantCode:   ExitInvalid,
-			wantStderr: []string{`releash: invalid Unleash URL "http://host:0/api": must be an absolute http or https URL`},
+			wantStderr: []string{`releash: invalid Unleash URL "http://host:0/api": port 0 is not between 1 and 65535`},
+		},
+		{
+			name:       "invalid URL with a password does not print the password",
+			opts:       with(func(o *CheckOptions) { o.URL = "http://user:s3cret@host:99999/api" }),
+			wantCode:   ExitInvalid,
+			wantStderr: []string{`releash: invalid Unleash URL "http://user:xxxxx@host:99999/api": port 99999 is not between 1 and 65535`},
+		},
+		{
+			name:       "current time with a one-digit hour",
+			opts:       with(set(OptionCurrentTime, currentTime, "2026-01-01T1:00:00Z")),
+			wantCode:   ExitInvalid,
+			wantStderr: []string{`releash: invalid --current-time "2026-01-01T1:00:00Z": must be an RFC 3339 timestamp`},
+		},
+		{
+			name:       "current time with a comma before the fraction",
+			opts:       with(set(OptionCurrentTime, currentTime, "2026-01-01T00:00:00,5Z")),
+			wantCode:   ExitInvalid,
+			wantStderr: []string{`releash: invalid --current-time "2026-01-01T00:00:00,5Z": must be an RFC 3339 timestamp`},
+		},
+		{
+			name:       "current time with a leap second outside 23:59 UTC",
+			opts:       with(set(OptionCurrentTime, currentTime, "2026-01-01T00:00:60Z")),
+			wantCode:   ExitInvalid,
+			wantStderr: []string{`releash: invalid --current-time "2026-01-01T00:00:60Z": must be an RFC 3339 timestamp`},
 		},
 		{
 			name:       "invalid remote address",
@@ -415,6 +439,8 @@ func TestValidateCheckParsesRFC3339Variants(t *testing.T) {
 		// time.Time has no leap seconds, so :60 is the next minute's first instant.
 		{"2016-12-31T23:59:60Z", time.Date(2017, 1, 1, 0, 0, 0, 0, time.UTC)},
 		{"2016-12-31T23:59:60.5Z", time.Date(2017, 1, 1, 0, 0, 0, 500_000_000, time.UTC)},
+		// A leap second in a local offset is still at 23:59:60 UTC.
+		{"2016-12-31T15:59:60-08:00", time.Date(2017, 1, 1, 0, 0, 0, 0, time.UTC)},
 		{"2026-01-01T00:00:00+23:59", time.Date(2025, 12, 31, 0, 1, 0, 0, time.UTC)},
 	}
 	for _, tt := range tests {

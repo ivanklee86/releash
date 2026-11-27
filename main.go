@@ -107,7 +107,8 @@ func run(root *cobra.Command, args []string, stdout, stderr io.Writer) (code int
 }
 
 // optionBeforeCheck returns the first option that comes before the check
-// command in args, other than --help, -h and --version. The root command has
+// command in args, other than --help, -h, --version and -v (also written as
+// --help=... or --version=...). The root command has
 // no other options, and cobra's lookup of the subcommand guesses whether an
 // unknown option takes a value, so without this some such invocations would
 // run check and others would fail on the root command with empty stdout.
@@ -120,7 +121,9 @@ func optionBeforeCheck(args []string) (string, bool) {
 		switch {
 		case a == "--":
 			return "", false
-		case a == "--help", a == "-h", a == "--version":
+		case a == "-h", a == "-v",
+			a == "--help", strings.HasPrefix(a, "--help="),
+			a == "--version", strings.HasPrefix(a, "--version="):
 		case strings.HasPrefix(a, "-"):
 			return a, true
 		}

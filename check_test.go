@@ -240,6 +240,8 @@ func TestCheckVersion(t *testing.T) {
 		{"check", "x", "--version"},
 		{"check", "x", "extra", "--version", "--timeout", "abc"},
 		{"--version", "check", "x"},
+		{"-v", "check", "x"},
+		{"--version=true", "check", "x"},
 		{"--version"},
 	} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {

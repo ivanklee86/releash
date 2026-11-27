@@ -15,7 +15,7 @@ Decisions made while building PR 1, within the ones below:
 - `releash check --version` prints the version and exits 0, like `releash --version`, because spec 0001 makes `--help` and `--version` the two informational exceptions for `releash check`. The check command sets cobra's `Version`, and the root command's version template, which the check command inherits, prints `releash version <version>` for both.
 - `releash check ""` counts as a missing flag name (exit 2).
 - An option before the `check` command, other than `--help`, `-h` and `--version`, exits 2 with `false` on stdout. cobra's subcommand lookup guesses whether an unknown option takes a value, so without this rule `releash --url <url> check x` ran the check while `releash --loud check x` failed on the root command with empty stdout.
-- `--current-time` follows RFC 3339 itself rather than Go's `time.RFC3339Nano` layout: a lowercase `t` and `z` and a leap second (`:60`, read as the next minute's first instant) are accepted, and offsets with hours above 23 or minutes above 59 exit 4. An explicit zero time is kept, not mistaken for an unset option.
+- `--current-time` follows RFC 3339 itself rather than Go's `time.RFC3339Nano` layout: the exact shape of the RFC 3339 grammar is required (Go also accepts a one-digit hour and a comma before the fraction), a lowercase `t` and `z` are accepted, a leap second (`:60`) is accepted only at 23:59:60 UTC and read as the next minute's first instant, and offsets with hours above 23 or minutes above 59 exit 4. An explicit zero time is kept, not mistaken for an unset option.
 - A `--url` port outside 1 to 65535 is an invalid URL (exit 4).
 
 ## How to work through this plan

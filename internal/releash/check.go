@@ -1,9 +1,11 @@
 package releash
 
 import (
+	"errors"
 	"fmt"
 	"net/netip"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -193,7 +195,7 @@ func validateCheck(opts CheckOptions) (checkRequest, []problem) {
 	if opts.URL == "" {
 		report(ExitNotConfigured, "no Unleash URL: set UNLEASH_URL or --%s to the Unleash API URL", OptionURL)
 	} else if u, err := parseUnleashURL(opts.URL); err != nil {
-		report(ExitInvalid, "invalid Unleash URL %q: must be an absolute http or https URL", opts.URL)
+		report(ExitInvalid, "invalid Unleash URL %s: %v", redactURL(opts.URL), err)
 	} else {
 		req.url = u
 	}
@@ -270,40 +272,64 @@ func validateCheck(opts CheckOptions) (checkRequest, []problem) {
 func parseUnleashURL(s string) (*url.URL, error) {
 	u, err := url.Parse(s)
 	if err != nil {
-		return nil, err
+		return nil, errors.New("must be an absolute http or https URL")
 	}
 	if (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" {
-		return nil, fmt.Errorf("%q is not an absolute http or https URL", s)
+		return nil, errors.New("must be an absolute http or https URL")
 	}
 	// url.Parse accepts any run of digits as a port.
 	if p := u.Port(); p != "" {
 		if n, err := strconv.Atoi(p); err != nil || n < 1 || n > 65535 {
-			return nil, fmt.Errorf("%q has an invalid port", s)
+			return nil, fmt.Errorf("port %s is not between 1 and 65535", p)
 		}
 	}
 	return u, nil
 }
 
+// redactURL quotes s for an error message with any password replaced by
+// "xxxxx", because the URL may come from a CI secret and errors are printed
+// without --loud. A URL that does not parse but contains "@", and so may hold
+// credentials, is not echoed at all.
+func redactURL(s string) string {
+	u, err := url.Parse(s)
+	if err == nil {
+		// Redacted also normalises the URL, so use it only when it hides something.
+		if _, hasPassword := u.User.Password(); hasPassword {
+			return strconv.Quote(u.Redacted())
+		}
+		return strconv.Quote(s)
+	}
+	if strings.Contains(s, "@") {
+		return "(not shown, because it may contain credentials)"
+	}
+	return strconv.Quote(s)
+}
+
+// rfc3339Shape is the date-time grammar of RFC 3339 section 5.6, checked
+// before time.Parse, which also accepts one-digit hours and a comma before the
+// fraction.
+var rfc3339Shape = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$`)
+
 // parseRFC3339 parses s as an RFC 3339 date-time. It differs from time.Parse
-// with time.RFC3339Nano where that differs from the RFC: it accepts a
-// lowercase "t" and "z" and a leap second (:60, read as the first instant of
-// the next minute, since time.Time has no leap seconds), and rejects offsets
-// whose hours exceed 23 or whose minutes exceed 59.
+// with time.RFC3339Nano where that differs from the RFC: it requires the exact
+// shape of the grammar, accepts a lowercase "t" and "z", rejects offsets whose
+// hours exceed 23 or whose minutes exceed 59, and accepts a leap second (:60)
+// only at 23:59 UTC. A leap second reads as the first instant of the next
+// minute, since time.Time has no leap seconds.
 func parseRFC3339(s string) (time.Time, error) {
 	s = strings.ToUpper(s)
+	if !rfc3339Shape.MatchString(s) {
+		return time.Time{}, fmt.Errorf("%q is not shaped like YYYY-MM-DDTHH:MM:SS[.frac](Z|+hh:mm)", s)
+	}
 	if !strings.HasSuffix(s, "Z") {
-		// A numeric offset is the last six characters, "+hh:mm" or "-hh:mm".
-		if len(s) < 6 || (s[len(s)-6] != '+' && s[len(s)-6] != '-') || s[len(s)-3] != ':' {
-			return time.Time{}, fmt.Errorf("%q has no valid time offset", s)
-		}
-		hh, errH := strconv.Atoi(s[len(s)-5 : len(s)-3])
-		mm, errM := strconv.Atoi(s[len(s)-2:])
-		if errH != nil || errM != nil || hh > 23 || mm > 59 {
+		hh, _ := strconv.Atoi(s[len(s)-5 : len(s)-3])
+		mm, _ := strconv.Atoi(s[len(s)-2:])
+		if hh > 23 || mm > 59 {
 			return time.Time{}, fmt.Errorf("%q has an invalid time offset", s)
 		}
 	}
-	// "YYYY-MM-DDTHH:MM:60" puts the seconds at bytes 17 and 18.
-	leap := len(s) > 19 && s[16] == ':' && s[17:19] == "60"
+	// The shape check puts the seconds at bytes 17 and 18.
+	leap := s[17:19] == "60"
 	if leap {
 		s = s[:17] + "59" + s[19:]
 	}
@@ -312,6 +338,9 @@ func parseRFC3339(s string) (time.Time, error) {
 		return time.Time{}, err
 	}
 	if leap {
+		if u := t.UTC(); u.Hour() != 23 || u.Minute() != 59 {
+			return time.Time{}, fmt.Errorf("%q has a leap second that is not at 23:59:60 UTC", s)
+		}
 		t = t.Add(time.Second)
 	}
 	return t, nil
