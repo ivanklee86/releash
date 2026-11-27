@@ -53,6 +53,10 @@ type evaluator func(ctx context.Context, req checkRequest) outcome
 // time, when the flag is not in the fetched flags, or when the SDK cannot
 // evaluate it. Fetched flags are kept in memory only, so evaluate never
 // reads or writes files, and nothing carries over from one call to the next.
+//
+// After an evaluated answer, evaluate waits within req.timeout for Unleash to
+// accept the check's usage metrics. A failed or unfinished send adds a note
+// and never changes the answer.
 func evaluate(ctx context.Context, req checkRequest) outcome {
 	runCtx, cancel := context.WithTimeout(ctx, req.timeout)
 	defer cancel()
@@ -83,12 +87,14 @@ func evaluate(ctx context.Context, req checkRequest) outcome {
 		unleash.WithHttpClient(httpClient),
 		unleash.WithStorage(memoryStorage{}),
 		unleash.WithListener(events),
+		unleash.WithMetricsInterval(metricsInterval),
 	)
 	if err != nil {
 		return outcome{fallback: fmt.Sprintf("cannot start the Unleash client: %v; returning false", err)}
 	}
 
 	var out outcome
+	var metricsNote string
 	fetched := false
 	select {
 	case <-events.ready:
@@ -99,17 +105,20 @@ func evaluate(ctx context.Context, req checkRequest) outcome {
 		}
 		fetched = true
 		out = evaluateFlag(client, req)
+		// A fallback has no usage worth waiting to report.
+		if out.fallback == "" {
+			metricsNote = awaitMetrics(runCtx, events, log, req.timeout)
+		}
 	case err := <-events.failed:
 		out = outcome{fallback: fetchFailure(runCtx, req.timeout, log.outcome(featuresPath), err)}
 	case <-runCtx.Done():
 		out = outcome{fallback: timedOut(req.timeout)}
 	}
-	if out.fallback != "" {
-		// No flag gave the answer, so there is no usage worth waiting to report.
-		cancel()
-	}
-	// Close stops the SDK's goroutines, flushes metrics within what is left of
-	// runCtx, and returns once every listener callback has run.
+	// Close flushes buffered metrics: nothing after a confirmed send, but a
+	// retry after a failed one, which could take the rest of the timeout.
+	// Cancelling first makes that flush fail at once. Close returns once
+	// every listener callback has run.
+	cancel()
 	_ = client.Close()
 
 	if fetched && out.fallback == "" {
@@ -124,6 +133,9 @@ func evaluate(ctx context.Context, req checkRequest) outcome {
 		if note := registerFailure(log.outcome(registerPath), registerTimeout(req.timeout)); note != "" {
 			out.notes = append(out.notes, note)
 		}
+	}
+	if metricsNote != "" {
+		out.notes = append(out.notes, metricsNote)
 	}
 	return out
 }
@@ -158,7 +170,7 @@ func evaluationError(client *unleash.Client, events *sdkListener) error {
 	for {
 		select {
 		case err := <-client.Errors():
-			if !events.log.fromBackgroundRequest(err) {
+			if events.log.backgroundRequest(err) == "" {
 				return err
 			}
 		default:
@@ -271,10 +283,23 @@ type sdkListener struct {
 	// log tells register and metrics errors apart after redirects. It may be
 	// nil, and then only the path in the error is used.
 	log *requestLog
+
+	sentOnce sync.Once
+	// sent is closed once Unleash has accepted a metrics send.
+	sent chan struct{}
+	// metricsProblem is signalled when a metrics send may have failed. It
+	// carries no detail: the request log has the outcome.
+	metricsProblem chan struct{}
 }
 
 func newSDKListener(log *requestLog) *sdkListener {
-	return &sdkListener{ready: make(chan struct{}), failed: make(chan error, 1), log: log}
+	return &sdkListener{
+		ready:          make(chan struct{}),
+		failed:         make(chan error, 1),
+		log:            log,
+		sent:           make(chan struct{}),
+		metricsProblem: make(chan struct{}, 1),
+	}
 }
 
 // OnReady is called after the first feature fetch that did not fail.
@@ -288,7 +313,11 @@ func (l *sdkListener) OnUpdate() {}
 // reports transport errors of register and metrics requests here too, as a
 // *url.Error. Their HTTP status errors go to OnWarning.
 func (l *sdkListener) OnError(err error) {
-	if l.log.fromBackgroundRequest(err) {
+	switch l.log.backgroundRequest(err) {
+	case metricsPath:
+		l.signalMetricsProblem()
+		return
+	case registerPath:
 		return
 	}
 	select {
@@ -299,32 +328,39 @@ func (l *sdkListener) OnError(err error) {
 
 // OnWarning receives non-fatal problems, such as a register request that
 // Unleash answered with an error status. evaluate learns of those from its
-// transport instead.
-func (l *sdkListener) OnWarning(error) {}
+// transport instead. Every warning signals metricsProblem, because the SDK
+// gives no way to tell which request a warning is about without parsing its
+// text.
+func (l *sdkListener) OnWarning(error) { l.signalMetricsProblem() }
 
-// fromBackgroundRequest reports whether err is a *url.Error from a register
-// or metrics request. After a redirect, net/http names the previous hop in
-// the error, so a path that is not the register or metrics path counts when
-// l saw it as a hop of a register or metrics request and never as a hop of a
-// feature fetch. l may be nil.
-func (l *requestLog) fromBackgroundRequest(err error) bool {
+// backgroundRequest returns registerPath or metricsPath if err is a
+// *url.Error from a register or metrics request, and "" otherwise. After a
+// redirect, net/http may name another hop in the error, so a path that is
+// neither counts when l saw it as a hop of a register or metrics request and
+// never as a hop of a feature fetch. l may be nil.
+func (l *requestLog) backgroundRequest(err error) string {
 	var ue *url.Error
 	if !errors.As(err, &ue) {
-		return false
+		return ""
 	}
 	u, perr := url.Parse(ue.URL)
 	if perr != nil {
-		return false
+		return ""
 	}
-	if strings.HasSuffix(u.Path, registerPath) || strings.HasSuffix(u.Path, metricsPath) {
-		return true
+	for _, p := range []string{registerPath, metricsPath} {
+		if strings.HasSuffix(u.Path, p) {
+			return p
+		}
 	}
 	if l == nil {
-		return false
+		return ""
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	return l.backgroundHops[u.Path] && !l.featureHops[u.Path]
+	if kind := l.hops[u.Path]; kind != featuresPath {
+		return kind
+	}
+	return ""
 }
 
 // requestOutcome is what the transport saw of one request: an HTTP status, or
@@ -335,17 +371,17 @@ type requestOutcome struct {
 	err    error
 }
 
-// requestLog keeps, for featuresPath and for registerPath, the outcome of the
-// first request to that path. When http.Client follows redirects from that
-// request, the outcome of the last hop replaces it, wherever the hop went. It
-// is safe for concurrent use.
+// requestLog keeps, for featuresPath, registerPath and metricsPath, the
+// outcome of the first request to that path. When http.Client follows
+// redirects from that request, the outcome of the last hop replaces it,
+// wherever the hop went. It is safe for concurrent use.
 type requestLog struct {
 	mu    sync.Mutex
 	first map[string]loggedRequest
-	// featureHops and backgroundHops hold the URL paths of every hop of
-	// feature fetches, and of register and metrics requests.
-	featureHops    map[string]bool
-	backgroundHops map[string]bool
+	// hops maps the URL path of every hop to the path of the request that
+	// started its redirect chain: featuresPath, registerPath or metricsPath.
+	// A path that a feature fetch went through stays featuresPath.
+	hops map[string]string
 }
 
 type loggedRequest struct {
@@ -359,18 +395,15 @@ func (l *requestLog) record(req *http.Request, o requestOutcome) {
 	origin := redirectOrigin(req)
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if l.featureHops == nil {
-		l.featureHops, l.backgroundHops = make(map[string]bool), make(map[string]bool)
-	}
-	switch {
-	case strings.HasSuffix(origin.URL.Path, featuresPath):
-		l.featureHops[req.URL.Path] = true
-	case strings.HasSuffix(origin.URL.Path, registerPath), strings.HasSuffix(origin.URL.Path, metricsPath):
-		l.backgroundHops[req.URL.Path] = true
-	}
-	for _, p := range []string{featuresPath, registerPath} {
+	for _, p := range []string{featuresPath, registerPath, metricsPath} {
 		if !strings.HasSuffix(origin.URL.Path, p) {
 			continue
+		}
+		if l.hops == nil {
+			l.hops = make(map[string]string)
+		}
+		if l.hops[req.URL.Path] != featuresPath {
+			l.hops[req.URL.Path] = p
 		}
 		if prev, seen := l.first[p]; seen && prev.origin != origin {
 			continue
@@ -394,7 +427,8 @@ func redirectOrigin(req *http.Request) *http.Request {
 }
 
 // outcome returns the outcome of the first request to path, which is
-// featuresPath or registerPath, or the zero value if there was none.
+// featuresPath, registerPath or metricsPath, or the zero value if there was
+// none.
 func (l *requestLog) outcome(path string) requestOutcome {
 	l.mu.Lock()
 	defer l.mu.Unlock()
