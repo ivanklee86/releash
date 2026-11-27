@@ -50,14 +50,15 @@ func (l *localAddress) address() string {
 
 // localAddressTransport sends requests through base and records in addr the
 // local address of the connection each feature fetch uses, including each
-// hop of a redirected one.
+// hop of a redirected one, whatever its path. It must sit under
+// boundedTransport, which links each redirect hop to the one before it.
 type localAddressTransport struct {
 	base http.RoundTripper
 	addr *localAddress
 }
 
 func (t *localAddressTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	if !strings.HasSuffix(req.URL.Path, featuresPath) {
+	if !strings.HasSuffix(redirectOrigin(req).URL.Path, featuresPath) {
 		return t.base.RoundTrip(req)
 	}
 	trace := &httptrace.ClientTrace{

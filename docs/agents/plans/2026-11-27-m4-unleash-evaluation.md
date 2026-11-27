@@ -4,7 +4,7 @@ Started 2026-11-27. Status: in progress. Milestone: [M4](../milestones/M4-unleas
 
 ## Resume here
 
-Updated 2026-11-27. Status: PR 1 merged; PR 2 implemented on `m4/metrics`; PR 3 in progress on `m4/remote-address`. A spike on the v6 SDK ran first (findings below). When resuming, start the first PR in [Steps](#steps) that is not checked off and whose dependencies are merged. Before ending a session, update this section and check off finished steps.
+Updated 2026-11-27. A spike on the v6 SDK ran first (findings below). PR 1 (evaluation) is merged. PR 2 (usage metrics) is on `m4/metrics`, rebased onto `main` with the PR 1 review fixes as its first commit. PR 3 (automatic `remoteAddress`) is on `m4/remote-address`, stacked on `m4/metrics`, with its review findings fixed; once PR 2 merges it is rebased onto `main`. Next: the user runs `/ship` for PR 2, then PR 3, then the close-out. When resuming, start the first PR in [Steps](#steps) that is not checked off and whose dependencies are merged. Before ending a session, update this section and check off finished steps.
 
 Decisions made while building PR 1, within the ones below:
 
@@ -12,7 +12,7 @@ Decisions made while building PR 1, within the ones below:
 - One run context with the `--timeout` deadline bounds everything. A `boundedTransport` cancels every SDK request when it ends, and the `http.Client` also has `Timeout` set to `--timeout`, as spec 0001 asks. The transport also records the outcome (status or transport error) of the first `/client/features` and `/client/register` request, and the fallback and register lines are built from those records rather than from the SDK's error text.
 - The `--loud` lines are `releash: unleash unreachable: <error>; returning false`, `releash: unleash did not answer within <timeout>; returning false`, `releash: unleash rejected the API token (HTTP 401|403); returning false`, `releash: unleash answered the feature fetch with HTTP <status>; returning false`, `releash: unleash sent a malformed feature response: <error>; returning false` and `releash: flag "<flag>" not found; returning false`. A failed register request adds `releash: registering with unleash failed: <HTTP status or error>; the answer is unaffected`, only when the feature fetch succeeded, because otherwise the register request failed for the same reason and the fallback line already says so.
 - Metrics stay enabled with the SDK's default interval, because the SDK sends the register request only when metrics are enabled, and spec 0001 has releash register under its `appName`. With the default 60s interval no periodic send happens within a normal run; `Close` makes the SDK's one shutdown flush, bounded by the run context. On a fallback, releash cancels the run context before `Close`, so nothing waits on the flush. PR 2 owns the rest.
-- `remoteAddress` stays unset without `--remote-address`; PR 3 adds detection.
+- In PR 1, `remoteAddress` stayed unset without `--remote-address`. PR 3 supersedes this: it detects the local address of the connection to Unleash.
 - Without `--current-time`, `currentTime` is left empty, and the SDK uses the time of evaluation, which is within `--timeout` of the start of the check.
 - Unleash rejects an empty value in a constraint, and the SDK reads an empty property the same as an unset one, so the scenario for `--properties build=` can only check that an empty value is accepted and leaves a `NOT_IN` constraint passing; the unit tests check that the empty value reaches evaluation.
 
@@ -53,7 +53,7 @@ The spike ran the v6.5.1 SDK against the local stack and fake servers on 2026-11
 
 ### PR 1: evaluation
 
-- [x] Branch `m4/evaluate`.
+- [x] Branch `m4/evaluate`. Merged.
 - Contents: the M3 close-out (M3 to `done`, its scope ticked, the M3 plan's status); this plan; spec 0001 and the M4 milestone reworded for v6; the SDK in `go.mod`; `internal/releash` evaluates the flag through the SDK with in-memory storage only, an HTTP client bounded by `--timeout`, evaluation only after the first successful fetch, an immediate fallback when that fetch fails, unknown-flag detection, and one `--loud` line per fallback reason; register errors only under `--loud`; the temporary M3 `--loud` line removed; every context option reaching evaluation; the M4 integration scenarios except metrics and automatic `remoteAddress` filled in; `docs/agents/internals.md`.
 - Milestone criteria: SDK, true/false, context, `--current-time` default, fallbacks, `--loud`, no stale state, M3 message gone.
 
@@ -71,9 +71,9 @@ The spike ran the v6.5.1 SDK against the local stack and fake servers on 2026-11
 
 ### PR 3: automatic remoteAddress
 
-- [x] Branch `m4/remote-address`, stacked on `m4/evaluate`. Implemented and committed, not yet pushed; `task`, `prek run --all-files` and `task go:test-integration` pass locally.
+- [x] Branch `m4/remote-address`, stacked on `m4/evaluate`. Implemented and committed with its review findings fixed, not yet pushed; `task`, `prek run --all-files` and `task go:test-integration` pass locally.
 - Contents: without `--remote-address`, the local address of releash's connection to Unleash becomes `remoteAddress`, taken from the SDK's HTTP client; `--remote-address` overrides it; when no address can be found, `--loud` says so and the result does not change; the help text for `--remote-address` and `--current-time` names their defaults; integration tests.
-- How it was built: the new `internal/releash/remoteaddress.go` holds a `localAddressTransport` that wraps the cloned `http.DefaultTransport` underneath `boundedTransport` and traces only `/client/features` requests with `httptrace` `GotConn`, so the address is that of the connection that served the flags (the last hop of a redirect). The change to the SDK client setup in `evaluate` is the one wrapped transport and the `withRemoteAddress` call after a successful fetch, to keep the rebase against PR 2 small. The address is reduced to a plain IP (no port or zone, IPv4-mapped IPv6 read as IPv4). Behind an HTTP proxy it is the address of the connection to the proxy. The `--loud` note is `releash: could not find the local address of the connection to unleash; remoteAddress is unset`, given only when the fetch succeeded and `--remote-address` was not given.
+- How it was built: the new `internal/releash/remoteaddress.go` holds a `localAddressTransport` that wraps the cloned `http.DefaultTransport` underneath `boundedTransport` and traces with `httptrace` `GotConn` only `/client/features` requests and their redirect hops, whatever path a hop has, so the address is that of the connection that served the flags (the last hop of a redirect). The change to the SDK client setup in `evaluate` is the one wrapped transport and the `withRemoteAddress` call after a successful fetch, to keep the rebase against PR 2 small. The address is reduced to a plain IP (no port or zone, IPv4-mapped IPv6 read as IPv4). Behind an HTTP proxy it is the address of the connection to the proxy. The `--loud` note is `releash: could not find the local address of the connection to unleash; remoteAddress is unset`, given only when the fetch succeeded and `--remote-address` was not given.
 - Tests: unit tests against loopback fake servers over IPv4 and IPv6. A check over TCP always finds an address, so the "no address" note is unit-tested on `withRemoteAddress` only. The integration scenarios use `ip-allowlist` for the runner's address and a scenario flag listing only `203.0.113.7` (RFC 5737, never the runner's) to show the detected address is used and that `--remote-address` overrides it both ways.
 - Milestone criteria: `remoteAddress` default and override.
 
