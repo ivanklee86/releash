@@ -234,6 +234,36 @@ func TestCheck(t *testing.T) {
 			wantStderr: []string{`releash: invalid Unleash URL "http://user:xxxxx@host:99999/api": port 99999 is not between 1 and 65535`},
 		},
 		{
+			name:       "URL with a query",
+			opts:       with(func(o *CheckOptions) { o.URL = "http://host/api?x=1" }),
+			wantCode:   ExitInvalid,
+			wantStderr: []string{`releash: invalid Unleash URL "http://host/api?x=1": must not have a query or fragment`},
+		},
+		{
+			name:       "URL with an empty query",
+			opts:       with(func(o *CheckOptions) { o.URL = "http://host/api?" }),
+			wantCode:   ExitInvalid,
+			wantStderr: []string{`releash: invalid Unleash URL "http://host/api?": must not have a query or fragment`},
+		},
+		{
+			name:       "URL with a fragment",
+			opts:       with(func(o *CheckOptions) { o.URL = "http://host/api#x" }),
+			wantCode:   ExitInvalid,
+			wantStderr: []string{`releash: invalid Unleash URL "http://host/api#x": must not have a query or fragment`},
+		},
+		{
+			name:       "URL with an empty fragment",
+			opts:       with(func(o *CheckOptions) { o.URL = "http://host/api#" }),
+			wantCode:   ExitInvalid,
+			wantStderr: []string{`releash: invalid Unleash URL "http://host/api#": must not have a query or fragment`},
+		},
+		{
+			name:       "current time on a leap second that ends year 9999",
+			opts:       with(set(OptionCurrentTime, currentTime, "9999-12-31T23:59:60Z")),
+			wantCode:   ExitInvalid,
+			wantStderr: []string{`releash: invalid --current-time "9999-12-31T23:59:60Z": must be an RFC 3339 timestamp`},
+		},
+		{
 			name:       "current time with a one-digit hour",
 			opts:       with(set(OptionCurrentTime, currentTime, "2026-01-01T1:00:00Z")),
 			wantCode:   ExitInvalid,

@@ -23,6 +23,11 @@ type FakeUnleash struct {
 	FeaturesBody string
 	// RegisterStatus answers POST /api/client/register. Zero means 202.
 	RegisterStatus int
+	// MetricsStatus answers POST /api/client/metrics. Zero means 202.
+	MetricsStatus int
+	// MetricsHang makes POST /api/client/metrics never answer, until the
+	// client gives up or the test ends. It overrides MetricsStatus.
+	MetricsHang bool
 }
 
 // EnabledFlagBody returns a Client API response holding one flag, name,
@@ -32,10 +37,11 @@ func EnabledFlagBody(name string) string {
 }
 
 // Start starts the fake on the loopback address and returns its API URL,
-// with /api. Every other path, such as /api/client/metrics, answers 202. The
-// server is closed when the test finishes.
+// with /api. Every other path answers 202. The server is closed when the test
+// finishes.
 func (f FakeUnleash) Start(t testing.TB) string {
 	t.Helper()
+	stop := make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/client/features":
@@ -43,11 +49,25 @@ func (f FakeUnleash) Start(t testing.TB) string {
 			_, _ = io.WriteString(w, f.FeaturesBody)
 		case "/api/client/register":
 			w.WriteHeader(orDefault(f.RegisterStatus, http.StatusAccepted))
+		case "/api/client/metrics":
+			if f.MetricsHang {
+				// The server notices a client giving up only once the body is read.
+				_, _ = io.Copy(io.Discard, r.Body)
+				select {
+				case <-r.Context().Done():
+				case <-stop:
+				}
+				return
+			}
+			w.WriteHeader(orDefault(f.MetricsStatus, http.StatusAccepted))
 		default:
 			w.WriteHeader(http.StatusAccepted)
 		}
 	}))
+	// Cleanups run last first, so hanging handlers return before Close waits
+	// for them.
 	t.Cleanup(srv.Close)
+	t.Cleanup(func() { close(stop) })
 	return srv.URL + "/api"
 }
 

@@ -391,10 +391,69 @@ func TestRegisterErrorDoesNotChangeTheAnswer(t *testing.T) {
 	assert.Equal(t, "releash: registering with unleash failed: HTTP 401; the answer is unaffected\n", res.stderr)
 }
 
+// The SDK's goroutines have stopped by the time Check returns, so usage that
+// shows up in Unleash afterwards was sent before the check exited.
+//
+// The check uses an appName of its own, so no other check's usage is counted
+// with it, and a fixture flag: Unleash drops usage of a flag created a few
+// seconds earlier, because it filters usage by a cached list of flag names.
 func TestUsageMetricsAreSentBeforeExit(t *testing.T) {
-	t.Skip("M4 PR 2: a check sends usage metrics for the flag before it returns")
+	integration.RequireUnleash(t)
+	app := fmt.Sprintf("releash-scenario-%d", time.Now().UnixNano())
+
+	assertAnswer(t, true, check(t, "enabled-everywhere", given(releash.OptionAppName, app), loud), "--loud reports no metrics problem")
+
+	usage := integration.WaitForUsage(t, "enabled-everywhere", integration.Production, app)
+	assert.Equal(t, integration.Usage{Yes: 1}, usage)
 }
 
 func TestFailingMetricsEndpointDoesNotDelayTheGate(t *testing.T) {
-	t.Skip("M4 PR 2: a failing or hanging metrics endpoint changes neither stdout nor the exit code, and exit stays within --timeout")
+	features := integration.EnabledFlagBody("enabled-everywhere")
+	tests := []struct {
+		name    string
+		fake    integration.FakeUnleash
+		timeout string
+		want    string
+		// maxElapsed bounds the check without --loud and with it.
+		maxElapsed time.Duration
+	}{
+		{
+			name:       "server error",
+			fake:       integration.FakeUnleash{FeaturesBody: features, MetricsStatus: http.StatusServiceUnavailable},
+			timeout:    "2s",
+			want:       "releash: sending usage metrics to unleash failed: HTTP 503; the answer is unaffected",
+			maxElapsed: time.Second,
+		},
+		{
+			name:       "rejected token",
+			fake:       integration.FakeUnleash{FeaturesBody: features, MetricsStatus: http.StatusForbidden},
+			timeout:    "2s",
+			want:       "releash: sending usage metrics to unleash failed: HTTP 403; the answer is unaffected",
+			maxElapsed: time.Second,
+		},
+		{
+			name:       "never answers",
+			fake:       integration.FakeUnleash{FeaturesBody: features, MetricsHang: true},
+			timeout:    "1s",
+			want:       "releash: sending usage metrics to unleash did not finish within 1s; the answer is unaffected",
+			maxElapsed: 1500 * time.Millisecond,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts := []option{given(releash.OptionURL, tt.fake.Start(t)), given(releash.OptionTimeout, tt.timeout)}
+
+			start := time.Now()
+			quiet := check(t, "enabled-everywhere", opts...)
+			assert.Less(t, time.Since(start), tt.maxElapsed, "without --loud")
+			start = time.Now()
+			noisy := check(t, "enabled-everywhere", append(opts, loud)...)
+			assert.Less(t, time.Since(start), tt.maxElapsed, "with --loud")
+
+			assertAnswer(t, true, quiet, "without --loud")
+			assert.Equal(t, quiet.stdout, noisy.stdout, "--loud changes stdout")
+			assert.Equal(t, quiet.code, noisy.code, "--loud changes the exit code")
+			assert.Equal(t, tt.want+"\n", noisy.stderr, "--loud line")
+		})
+	}
 }

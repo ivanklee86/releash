@@ -160,3 +160,67 @@ func adminRequest(method, path string, body any) error {
 	}
 	return nil
 }
+
+// Usage is the number of evaluations of one flag that Unleash counted, from
+// the usage metrics clients sent.
+type Usage struct {
+	Yes int
+	No  int
+}
+
+// WaitForUsage polls the Admin API's raw usage metrics of flag until Unleash
+// has counted at least one evaluation of it in env by the client called
+// appName, and returns the counts it then holds. Unleash stores the metrics
+// it receives a few seconds after they arrive. WaitForUsage fails the test if
+// none show up within 30 seconds.
+func WaitForUsage(t testing.TB, flag, env, appName string) Usage {
+	t.Helper()
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		u, err := flagUsage(flag, env, appName)
+		if err == nil && u.Yes+u.No > 0 {
+			return u
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("no usage metrics for flag %s from %s in %s within 30s (last error: %v)", flag, appName, env, err)
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+}
+
+// flagUsage sums the hourly raw usage rows of flag for env and appName.
+func flagUsage(flag, env, appName string) (Usage, error) {
+	path := "/api/admin/client-metrics/features/" + url.PathEscape(flag) + "/raw"
+	req, err := http.NewRequest(http.MethodGet, serverRoot(URL())+path, nil)
+	if err != nil {
+		return Usage{}, err
+	}
+	req.Header.Set("Authorization", AdminToken())
+	resp, err := (&http.Client{Timeout: 5 * time.Second}).Do(req)
+	if err != nil {
+		return Usage{}, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return Usage{}, fmt.Errorf("GET %s returned %s", path, resp.Status)
+	}
+	var got struct {
+		Data []struct {
+			AppName     string `json:"appName"`
+			Environment string `json:"environment"`
+			Yes         int    `json:"yes"`
+			No          int    `json:"no"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		return Usage{}, err
+	}
+	var u Usage
+	for _, row := range got.Data {
+		if row.AppName == appName && row.Environment == env {
+			u.Yes += row.Yes
+			u.No += row.No
+		}
+	}
+	return u, nil
+}
