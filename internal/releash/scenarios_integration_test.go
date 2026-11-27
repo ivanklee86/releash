@@ -318,12 +318,31 @@ func TestScheduledReleaseCanBeCheckedAheadOfTime(t *testing.T) {
 	assertAnswer(t, false, check(t, "date-after-past", given(releash.OptionCurrentTime, "2019-12-31T23:59:59+00:00")))
 }
 
+// elsewhereIP is a documentation address (RFC 5737) that is never the
+// runner's.
+const elsewhereIP = "203.0.113.7"
+
+// onlyFrom creates a flag that is on only for remoteAddress ip.
+func onlyFrom(t *testing.T, ip string) string {
+	t.Helper()
+	return integration.CreateFlag(t, integration.Strategy{Name: "remoteAddress", Parameters: map[string]string{"IPs": ip}})
+}
+
 func TestIPTargetedRolloutOpensForTheRunnerAddress(t *testing.T) {
-	t.Skip("M4 PR 3: without --remote-address, ip-allowlist is true for the address releash detects")
+	integration.RequireUnleash(t)
+	elsewhere := onlyFrom(t, elsewhereIP)
+
+	assertAnswer(t, true, check(t, "ip-allowlist"), "ip-allowlist lists the runner's address")
+	assertAnswer(t, true, check(t, "ip-allowlist", loud), "with --loud")
+	assertAnswer(t, false, check(t, elsewhere), "a flag for another address")
 }
 
 func TestRemoteAddressOptionOverridesTheRunnerAddress(t *testing.T) {
-	t.Skip("M4 PR 3: --remote-address outside the allowlist makes ip-allowlist false although the detected address is in it")
+	integration.RequireUnleash(t)
+	elsewhere := onlyFrom(t, elsewhereIP)
+
+	assertAnswer(t, true, check(t, elsewhere, given(releash.OptionRemoteAddress, elsewhereIP)), "--remote-address the flag lists")
+	assertAnswer(t, false, check(t, "ip-allowlist", given(releash.OptionRemoteAddress, "203.0.113.8")), "--remote-address outside ip-allowlist")
 }
 
 func TestTokenPicksTheEnvironment(t *testing.T) {

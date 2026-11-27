@@ -56,8 +56,11 @@ type evaluator func(ctx context.Context, req checkRequest) outcome
 // the feature fetch needs. The answer is false, with fallback set, when the
 // first feature fetch fails, is not a 2xx response, or does not finish in
 // time, when the flag is not in the fetched flags, or when the SDK cannot
-// evaluate it. Fetched flags are kept in memory only, so evaluate never
-// reads or writes files, and nothing carries over from one call to the next.
+// evaluate it. When req.context has no remoteAddress, the flag is evaluated
+// with the local IP address of the connection that fetched the flags, or,
+// when there is none, without one and with a note saying so. Fetched flags
+// are kept in memory only, so evaluate never reads or writes files, and
+// nothing carries over from one call to the next.
 //
 // After an evaluated answer, evaluate waits within req.timeout for Unleash to
 // accept the check's usage metrics. A failed or unfinished send adds a note
@@ -69,10 +72,11 @@ func evaluate(ctx context.Context, req checkRequest) outcome {
 	base := http.DefaultTransport.(*http.Transport).Clone()
 	defer base.CloseIdleConnections()
 	log := &requestLog{}
+	local := &localAddress{}
 	httpClient := &http.Client{
 		Timeout: req.timeout,
 		Transport: &boundedTransport{
-			base:            base,
+			base:            &localAddressTransport{base: base, addr: local},
 			run:             runCtx,
 			registerTimeout: registerTimeout(req.timeout),
 			log:             log,
@@ -110,12 +114,17 @@ func evaluate(ctx context.Context, req checkRequest) outcome {
 			break
 		}
 		fetched = true
+		var note string
+		req.context, note = withRemoteAddress(req.context, local.address())
 		out = evaluateFlag(client, req)
+		if note != "" {
+			out.notes = append(out.notes, note)
+		}
 		// A fallback has no usage worth waiting to report.
 		if out.fallback == "" {
 			var err error
 			if metricsNote, err = awaitMetrics(runCtx, events, log, req.timeout); err != nil {
-				out = evaluationFailure(req.flag, err)
+				out = out.evaluationFailed(req.flag, err)
 			}
 		}
 	case err := <-events.failed:
@@ -132,7 +141,7 @@ func evaluate(ctx context.Context, req checkRequest) outcome {
 
 	if fetched && out.fallback == "" {
 		if err := evaluationError(client, events); err != nil {
-			out = evaluationFailure(req.flag, err)
+			out = out.evaluationFailed(req.flag, err)
 		}
 	}
 
@@ -151,10 +160,10 @@ func evaluate(ctx context.Context, req checkRequest) outcome {
 	return out
 }
 
-// evaluationFailure returns the fallback for flag after the SDK reported err
-// while evaluating it.
-func evaluationFailure(flag string, err error) outcome {
-	return outcome{fallback: fmt.Sprintf("unleash could not evaluate flag %q: %v; returning false", flag, err)}
+// evaluationFailed returns o turned into the fallback for flag after the SDK
+// reported err while evaluating it. The notes in o are kept.
+func (o outcome) evaluationFailed(flag string, err error) outcome {
+	return outcome{fallback: fmt.Sprintf("unleash could not evaluate flag %q: %v; returning false", flag, err), notes: o.notes}
 }
 
 // evaluateFlag evaluates req.flag with a client whose first fetch succeeded.

@@ -263,6 +263,8 @@ func TestCheckHelp(t *testing.T) {
 			assert.Contains(t, out, `(default "production")`)
 			assert.Contains(t, out, `(default "releash")`)
 			assert.Contains(t, out, `(default "5s")`)
+			assert.Contains(t, out, "(default: the local address of the connection to Unleash)", "--remote-address default")
+			assert.Contains(t, out, "(default: the time of the check)", "--current-time default")
 			assert.Contains(t, out, "UNLEASH_URL")
 			assert.Contains(t, out, "UNLEASH_API_TOKEN")
 		})

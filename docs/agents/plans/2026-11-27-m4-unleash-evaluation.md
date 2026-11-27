@@ -71,8 +71,10 @@ The spike ran the v6.5.1 SDK against the local stack and fake servers on 2026-11
 
 ### PR 3: automatic remoteAddress
 
-- [ ] Branch `m4/remote-address`, stacked on `m4/evaluate`.
+- [x] Branch `m4/remote-address`, stacked on `m4/evaluate`. Implemented and committed, not yet pushed; `task`, `prek run --all-files` and `task go:test-integration` pass locally.
 - Contents: without `--remote-address`, the local address of releash's connection to Unleash becomes `remoteAddress`, taken from the SDK's HTTP client; `--remote-address` overrides it; when no address can be found, `--loud` says so and the result does not change; the help text for `--remote-address` and `--current-time` names their defaults; integration tests.
+- How it was built: the new `internal/releash/remoteaddress.go` holds a `localAddressTransport` that wraps the cloned `http.DefaultTransport` underneath `boundedTransport` and traces only `/client/features` requests with `httptrace` `GotConn`, so the address is that of the connection that served the flags (the last hop of a redirect). The change to the SDK client setup in `evaluate` is the one wrapped transport and the `withRemoteAddress` call after a successful fetch, to keep the rebase against PR 2 small. The address is reduced to a plain IP (no port or zone, IPv4-mapped IPv6 read as IPv4). Behind an HTTP proxy it is the address of the connection to the proxy. The `--loud` note is `releash: could not find the local address of the connection to unleash; remoteAddress is unset`, given only when the fetch succeeded and `--remote-address` was not given.
+- Tests: unit tests against loopback fake servers over IPv4 and IPv6. A check over TCP always finds an address, so the "no address" note is unit-tested on `withRemoteAddress` only. The integration scenarios use `ip-allowlist` for the runner's address and a scenario flag listing only `203.0.113.7` (RFC 5737, never the runner's) to show the detected address is used and that `--remote-address` overrides it both ways.
 - Milestone criteria: `remoteAddress` default and override.
 
 ### Close out
