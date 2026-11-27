@@ -55,6 +55,15 @@ func TestExecute(t *testing.T) {
 			wantStdoutLacks: []string{"[=true|false]"},
 		},
 		{
+			name:               "help --help prints the help command's usage",
+			args:               []string{"help", "--help"},
+			version:            "dev",
+			wantCode:           releash.ExitOK,
+			wantStdoutContains: []string{"Usage:", "releash help [command]", "--help"},
+			// cobra adds the help command when it runs, after NewRootCommand.
+			wantStdoutLacks: []string{"[=true|false]"},
+		},
+		{
 			name:       "--version prints the injected version",
 			args:       []string{"--version"},
 			version:    resolveVersion("v1.2.3", buildInfo("v0.0.0-20261127120000-abcdef123456")),

@@ -171,7 +171,38 @@ func NewRootCommand(r *releash.Releash, version string) *cobra.Command {
 	// "releash check version ..." for check.
 	cmd.SetVersionTemplate("releash version {{.Version}}\n")
 	cmd.AddCommand(newCheckCommand(r, version))
+	plainHelpAndVersion(cmd)
+	// cobra would add its help command only when it runs, too late for
+	// plainHelpAndVersion. Adding it here makes cobra reuse this one.
+	cmd.InitDefaultHelpCmd()
+	for _, sub := range cmd.Commands() {
+		if sub.Name() == "help" {
+			plainHelpAndVersion(sub)
+		}
+	}
 	return cmd
+}
+
+// plainHelpAndVersion adds cobra's --help and --version flags to cmd now,
+// rather than when it runs, and wraps their values so that help lists them
+// as "--help", not "--help[=true|false]": pflag 1.1.0 adds that suffix to any
+// option whose value reports IsBoolFlag. They still take no value, because
+// pflag set their NoOptDefVal when cobra added them. --loud already prints
+// plainly because countedValue hides IsBoolFlag too.
+func plainHelpAndVersion(cmd *cobra.Command) {
+	cmd.InitDefaultHelpFlag()
+	cmd.InitDefaultVersionFlag()
+	for _, name := range []string{"help", "version"} {
+		if fl := cmd.Flags().Lookup(name); fl != nil {
+			fl.Value = plainValue{Value: fl.Value}
+		}
+	}
+}
+
+// plainValue is a pflag.Value that hides the IsBoolFlag method of the value
+// it wraps, so pflag's help prints the option without "[=true|false]".
+type plainValue struct {
+	pflag.Value
 }
 
 // newCheckCommand returns the check command, which maps its arguments and
@@ -230,6 +261,7 @@ Unleash URL or token, 4 for an invalid value and 5 for a value given twice.`,
 	})
 
 	cmd.SetUsageFunc(checkUsage)
+	plainHelpAndVersion(cmd)
 	return cmd
 }
 
