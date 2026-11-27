@@ -580,3 +580,36 @@ func TestCheckFetchesTheFlagsOnlyOnce(t *testing.T) {
 	defer mu.Unlock()
 	assert.Equal(t, []string{"86400000"}, intervals, "the refresh interval the SDK announces, in ms")
 }
+
+func TestCheckIgnoresARegistrationThatFailsOnAHopTheFetchShares(t *testing.T) {
+	// A proxy sends every Client API request through /forward. The fetch is
+	// served there; the register request has its connection closed there, so
+	// its error names /forward, a path the fetch also went through.
+	var srv *httptest.Server
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/forward" && r.Method == http.MethodGet:
+			serve(http.StatusOK, featuresJSON(enabledFlag))(w, r)
+		case r.URL.Path == "/forward":
+			_, _ = io.Copy(io.Discard, r.Body)
+			conn, _, err := w.(http.Hijacker).Hijack()
+			if err == nil {
+				_ = conn.Close()
+			}
+		case r.URL.Path == "/api/client/features" || r.URL.Path == "/api/client/register":
+			_, _ = io.Copy(io.Discard, r.Body)
+			http.Redirect(w, r, srv.URL+"/forward", http.StatusTemporaryRedirect)
+		default:
+			w.WriteHeader(http.StatusAccepted)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	for range 10 {
+		stdout, stderr, code := runCheck(t, srv.URL+"/api", "on", true)
+
+		assert.Equal(t, ExitOK, code)
+		assert.Equal(t, "true\n", stdout)
+		assert.NotContains(t, stderr, "returning false")
+	}
+}

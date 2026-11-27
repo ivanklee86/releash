@@ -57,6 +57,8 @@ type localAddressTransport struct {
 	addr *localAddress
 }
 
+// RoundTrip sends req through base and, when req is a hop of a feature
+// fetch, records the local address of the connection it was sent on.
 func (t *localAddressTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if !strings.HasSuffix(redirectOrigin(req).URL.Path, featuresPath) {
 		return t.base.RoundTrip(req)

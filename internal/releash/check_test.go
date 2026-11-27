@@ -512,6 +512,15 @@ func TestValidateCheckUsesGivenValues(t *testing.T) {
 	assert.Equal(t, "https://unleash.example.com/api", req.url.String())
 }
 
+func TestValidateCheckUnmapsAnIPv4MappedRemoteAddress(t *testing.T) {
+	// The detected address of a host is unmapped, so a given one must be too
+	// for remoteAddress constraints to treat them alike.
+	req, problems := validateCheck(with(set(OptionRemoteAddress, remoteAddress, "::ffff:10.1.2.3")))
+
+	require.Empty(t, problems)
+	assert.Equal(t, "10.1.2.3", req.context.remoteAddress)
+}
+
 func TestValidateCheckIgnoresValuesOfOptionsNotGiven(t *testing.T) {
 	// Without Given, the fields are whatever the caller left in them, e.g. an
 	// empty default from a flag library.

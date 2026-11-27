@@ -117,7 +117,8 @@ func evaluate(ctx context.Context, req checkRequest) outcome {
 		var note string
 		req.context, note = withRemoteAddress(req.context, local.address())
 		out = evaluateFlag(client, req)
-		if note != "" {
+		// The address plays no part in a fallback such as an unknown flag.
+		if note != "" && out.fallback == "" {
 			out.notes = append(out.notes, note)
 		}
 		// A fallback has no usage worth waiting to report.
@@ -361,7 +362,7 @@ func (l *sdkListener) OnUpdate() {}
 // *url.Error is from a register or metrics request, whatever its path, since
 // the one feature fetch is done.
 func (l *sdkListener) OnError(err error) {
-	if l.isReady() && !isEvaluationError(err) {
+	if (l.isReady() && !isEvaluationError(err)) || l.log.notFromTheFetch(err) {
 		l.signalMetricsProblem()
 		return
 	}
@@ -413,6 +414,23 @@ func (l *requestLog) backgroundRequest(err error) string {
 		return kind
 	}
 	return ""
+}
+
+// notFromTheFetch reports whether err, a *url.Error naming a redirect hop
+// that is not the features path, cannot be from the feature fetch because
+// the transport saw no error on it. A hop path that both the feature fetch
+// and a register or metrics request went through is otherwise ambiguous.
+// l may be nil.
+func (l *requestLog) notFromTheFetch(err error) bool {
+	var ue *url.Error
+	if l == nil || !errors.As(err, &ue) {
+		return false
+	}
+	u, perr := url.Parse(ue.URL)
+	if perr != nil || strings.HasSuffix(u.Path, featuresPath) {
+		return false
+	}
+	return l.outcome(featuresPath).err == nil
 }
 
 // requestOutcome is what the transport saw of one request: an HTTP status, or
@@ -521,6 +539,8 @@ func (t *boundedTransport) registerDeadline(origin *http.Request) time.Time {
 	return d
 }
 
+// RoundTrip sends req through base within the limits described on
+// boundedTransport and records its outcome in log.
 func (t *boundedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	var ctx context.Context
 	var cancel context.CancelFunc
