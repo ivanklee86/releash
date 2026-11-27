@@ -28,20 +28,21 @@ import (
 	"github.com/ivanklee86/releash/internal/releash"
 )
 
-// result is what one check printed and returned.
+// result is what one check or variant run printed and returned.
 type result struct {
 	stdout string
 	stderr string
 	code   int
 }
 
-// option changes the options of one check.
-type option func(*releash.CheckOptions)
+// option changes the options of one check or variant run. check uses only
+// the CheckOptions part.
+type option func(*releash.VariantOptions)
 
 // given sets the option called name to value, counting it as given once, as
 // the command line would.
 func given(name, value string) option {
-	return func(o *releash.CheckOptions) {
+	return func(o *releash.VariantOptions) {
 		switch name {
 		case releash.OptionURL:
 			o.URL = value
@@ -69,29 +70,37 @@ func given(name, value string) option {
 }
 
 func property(nameValue string) option {
-	return func(o *releash.CheckOptions) { o.Properties = append(o.Properties, nameValue) }
+	return func(o *releash.VariantOptions) { o.Properties = append(o.Properties, nameValue) }
 }
 
-var loud option = func(o *releash.CheckOptions) { o.Loud = true }
+var loud option = func(o *releash.VariantOptions) { o.Loud = true }
 
 // check runs releash check flag against the local stack with the production
 // token, changed by opts.
 func check(t *testing.T, flag string, opts ...option) result {
 	t.Helper()
-	o := releash.CheckOptions{
+	o := stackOptions(t, flag, opts)
+	var stdout, stderr bytes.Buffer
+	r := releash.NewWithConfig(releash.Config{})
+	r.Out, r.Err = &stdout, &stderr
+	code := r.Check(o.CheckOptions)
+	return result{stdout: stdout.String(), stderr: stderr.String(), code: code}
+}
+
+// stackOptions returns the options of a run for flag against the local stack
+// with the production token, changed by opts.
+func stackOptions(t *testing.T, flag string, opts []option) releash.VariantOptions {
+	t.Helper()
+	o := releash.VariantOptions{CheckOptions: releash.CheckOptions{
 		Flag:  flag,
 		URL:   integration.URL(),
 		Token: integration.ClientToken(t, integration.Production),
 		Given: map[string]int{},
-	}
+	}}
 	for _, opt := range opts {
 		opt(&o)
 	}
-	var stdout, stderr bytes.Buffer
-	r := releash.NewWithConfig(releash.Config{})
-	r.Out, r.Err = &stdout, &stderr
-	code := r.Check(o)
-	return result{stdout: stdout.String(), stderr: stderr.String(), code: code}
+	return o
 }
 
 // assertAnswer asserts that res is the answer want, exit 0 and nothing on

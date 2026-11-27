@@ -15,6 +15,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	unleash "github.com/Unleash/unleash-go-sdk/v6"
 )
 
 // CreateFlag creates a flag in the fixtures' project through the Admin API
@@ -25,6 +27,16 @@ import (
 // with all its strategies, and archives the flag when the test ends. It
 // fails the test on any Admin API error.
 func CreateFlag(t testing.TB, strategies ...Strategy) string {
+	t.Helper()
+	return CreateVariantFlag(t, nil, strategies...)
+}
+
+// CreateVariantFlag creates a scenario flag as CreateFlag does, and gives it
+// the feature variants variants in every environment before switching it on.
+// Strategy variants go in each Strategy's Variants instead, and each needs a
+// Stickiness. It waits until both client tokens also see every feature
+// variant.
+func CreateVariantFlag(t testing.TB, variants []Variant, strategies ...Strategy) string {
 	t.Helper()
 	name := scenarioFlagName(t)
 	base := "/api/admin/projects/default/features/" + url.PathEscape(name)
@@ -40,10 +52,17 @@ func CreateFlag(t testing.TB, strategies ...Strategy) string {
 		for _, s := range strategies {
 			adminCall(t, http.MethodPost, base+"/environments/"+env+"/strategies", s)
 		}
+	}
+	if len(variants) > 0 {
+		// Unleash 8.3.1 refuses the per-environment variants PUT on a flag
+		// without feature variants, but accepts variants-batch.
+		adminCall(t, http.MethodPut, base+"/variants-batch", map[string]any{"variants": variants, "environments": Environments})
+	}
+	for _, env := range Environments {
 		adminCall(t, http.MethodPost, base+"/environments/"+env+"/on", nil)
 	}
 	for _, env := range Environments {
-		waitForClientFlag(t, ClientToken(t, env), name, len(strategies))
+		waitForClientFlag(t, ClientToken(t, env), name, len(strategies), len(variants))
 	}
 	return name
 }
@@ -73,14 +92,15 @@ func scenarioFlagName(t testing.TB) string {
 	return ScenarioFlagPrefix + slug + "-" + hex.EncodeToString(suffix)
 }
 
-// waitForClientFlag polls the Client API with token until it lists name with
-// at least n strategies. Unleash serves client features from a cache that is
-// refreshed shortly after a change.
-func waitForClientFlag(t testing.TB, token, name string, n int) {
+// waitForClientFlag polls the Client API with token until it lists name
+// switched on, with at least strategies strategies and variants feature
+// variants. Unleash serves client features from a cache that is refreshed
+// shortly after a change.
+func waitForClientFlag(t testing.TB, token, name string, strategies, variants int) {
 	t.Helper()
 	deadline := time.Now().Add(15 * time.Second)
 	for {
-		ok, err := clientSeesFlag(token, name, n)
+		ok, err := clientSeesFlag(token, name, strategies, variants)
 		if err == nil && ok {
 			return
 		}
@@ -91,12 +111,16 @@ func waitForClientFlag(t testing.TB, token, name string, n int) {
 	}
 }
 
-func clientSeesFlag(token, name string, n int) (bool, error) {
+func clientSeesFlag(token, name string, strategies, variants int) (bool, error) {
 	req, err := http.NewRequest(http.MethodGet, URL()+"/client/features", nil)
 	if err != nil {
 		return false, err
 	}
 	req.Header.Set("Authorization", token)
+	// Unleash caches the response for clients that support global segments
+	// apart from the one for other clients, and the two can be up to a second
+	// apart after a change. releash's SDK sends this header, so ask as it does.
+	req.Header.Set("Unleash-Client-Spec", unleash.SEGMENT_CLIENT_SPEC_VERSION)
 	resp, err := (&http.Client{Timeout: 5 * time.Second}).Do(req)
 	if err != nil {
 		return false, err
@@ -110,6 +134,7 @@ func clientSeesFlag(token, name string, n int) (bool, error) {
 			Name       string            `json:"name"`
 			Enabled    bool              `json:"enabled"`
 			Strategies []json.RawMessage `json:"strategies"`
+			Variants   []json.RawMessage `json:"variants"`
 		} `json:"features"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
@@ -117,7 +142,7 @@ func clientSeesFlag(token, name string, n int) (bool, error) {
 	}
 	for _, f := range got.Features {
 		if f.Name == name {
-			return f.Enabled && len(f.Strategies) >= n, nil
+			return f.Enabled && len(f.Strategies) >= strategies && len(f.Variants) >= variants, nil
 		}
 	}
 	return false, nil
@@ -166,6 +191,9 @@ func adminRequest(method, path string, body any) error {
 type Usage struct {
 	Yes int
 	No  int
+	// Variants counts each variant the evaluations returned, by name. It is
+	// nil when Unleash counted none, as for IsEnabled.
+	Variants map[string]int
 }
 
 // WaitForUsage polls the Admin API's raw usage metrics of flag until Unleash
@@ -206,10 +234,11 @@ func flagUsage(flag, env, appName string) (Usage, error) {
 	}
 	var got struct {
 		Data []struct {
-			AppName     string `json:"appName"`
-			Environment string `json:"environment"`
-			Yes         int    `json:"yes"`
-			No          int    `json:"no"`
+			AppName     string         `json:"appName"`
+			Environment string         `json:"environment"`
+			Yes         int            `json:"yes"`
+			No          int            `json:"no"`
+			Variants    map[string]int `json:"variants"`
 		} `json:"data"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
@@ -220,6 +249,12 @@ func flagUsage(flag, env, appName string) (Usage, error) {
 		if row.AppName == appName && row.Environment == env {
 			u.Yes += row.Yes
 			u.No += row.No
+			for name, n := range row.Variants {
+				if u.Variants == nil {
+					u.Variants = map[string]int{}
+				}
+				u.Variants[name] += n
+			}
 		}
 	}
 	return u, nil
