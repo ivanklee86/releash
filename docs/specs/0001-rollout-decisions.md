@@ -1,6 +1,6 @@
 - Feature Name: `check_command`
 - Start Date: 2026-11-26
-- Status: accepted
+- Status: implemented
 - Related ADRs: [0001](../adrs/0001-read-only-by-design.md), [0002](../adrs/0002-client-api-over-frontend-api.md), [0003](../adrs/0003-fail-safe-false.md), [0004](../adrs/0004-exit-code-contract.md)
 
 # Summary

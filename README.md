@@ -4,7 +4,7 @@ A small CLI to drive CI/CD changes via Unleash feature flags
 
 ## Usage
 
-releash is in early development. `releash check` evaluates a flag through the official Unleash Go SDK and prints `true` or `false`. It already reports usage to Unleash with one best-effort send when it exits; making that send reliable and detecting the runner's address for `remoteAddress` are still to come in M4 (see [`docs/agents/milestones`](docs/agents/milestones)); until then, pass `--remote-address` for IP-based strategies.
+releash is in early development. `releash check` evaluates a flag through the official Unleash Go SDK and prints `true` or `false`. It reports the check's usage to Unleash before it exits, and without `--remote-address` it uses the local address of its connection to Unleash as `remoteAddress`. The first release is planned in M5 (see [`docs/agents/milestones`](docs/agents/milestones)).
 
 Install a pinned version. There are no releases before v0.1.0, so until then pin a commit SHA.
 
