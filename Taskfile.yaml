@@ -1,0 +1,14 @@
+# https://taskfile.dev
+version: '3'
+
+includes:
+  go: ./tasks/go.yaml
+
+tasks:
+  default:
+    desc: Format, lint, build and test.
+    cmds:
+      - task: go:fmt
+      - task: go:lint
+      - task: go:build
+      - task: go:test
