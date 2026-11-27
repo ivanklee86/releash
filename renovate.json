@@ -127,6 +127,17 @@
       ],
       "groupName": "unleash",
       "automerge": false
+    },
+    {
+      "description": "Only release-check exercises these, and it is not a required check, so native auto-merge would not wait for it",
+      "matchPackageNames": [
+        "gcr.io/distroless/static-debian13",
+        "goreleaser/goreleaser",
+        "anchore/syft",
+        "tonistiigi/binfmt",
+        "moby/buildkit"
+      ],
+      "automerge": false
     }
   ],
   "customManagers": [

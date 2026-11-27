@@ -37,7 +37,7 @@ Decisions made while building PR 1, within the ones above. The ones marked "for 
 - The cask uses `skip_upload: auto`, so a prerelease tag writes the cask into `dist/` but does not push it to the tap. The tap token is read from `HOMEBREW_AUTH_TOKEN` in the environment; PR 2 sets it from the secret of the same name. A snapshot renders the cask without the variable set.
 - The cask description is "Drive CI/CD changes with Unleash feature flags", the README tagline without the leading article and final period that `brew audit` rejects.
 - `go install github.com/ivanklee86/releash@<commit>` through the module proxy reports the module version (`v0.0.0-20261127165219-abea5a1f7a81` for `main` at the time), which confirms the `go install` half of the `--version` criterion. The tagged `v0.1.0` case is checked at the release step.
-- New required checks: `release-check` and `release-notes`. The `main` ruleset is set in GitHub, so the user adds them after PR 1's first CI run. For review: until then, Renovate automerge waits only for the current required checks, so a release image base, goreleaser, syft, binfmt or BuildKit update, which only `release-check` exercises, can merge before `release-check` passes. Automerge is left on for them, and internals.md says it is safe only once `release-check` is required; the alternative is `automerge: false` for those packages until the ruleset is updated.
+- `release-check` and `release-notes` are not added to the `main` ruleset's required checks: the user chose to skip that on 2026-11-27. Because native auto-merge waits only for required checks, Renovate never automerges the release image base, goreleaser, syft, binfmt or BuildKit, which only `release-check` exercises.
 - Unlike argonap, the `release-check` job pins the QEMU and BuildKit images that `setup-qemu-action` and `setup-buildx-action` run, by tag and digest (`tonistiigi/binfmt:qemu-v10.2.3` and `moby/buildkit:v0.35.1`, the action defaults at the time), because their defaults are floating tags. A regex manager in `renovate.json` keeps both current in the `ci` group. PR 2's release workflow sets the same images.
 
 ## Steps
@@ -58,8 +58,8 @@ Decisions made while building PR 1, within the ones above. The ones marked "for 
 
 ### Labels and secret
 
-- [ ] The user has added `HOMEBREW_AUTH_TOKEN` to the repository's Actions secrets.
-- [ ] With the user's go, Claude creates `breaking-change` and `dependencies` with `gh label create`.
+- [x] The user has added `HOMEBREW_AUTH_TOKEN` to the repository's Actions secrets.
+- [x] With the user's go, Claude created `breaking-change` and `dependencies` with `gh label create` on 2026-11-27.
 
 ### Rehearsal: v0.1.0-rc.1
 
