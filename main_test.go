@@ -148,11 +148,10 @@ func TestRunRecoversPanics(t *testing.T) {
 		Use: "panics",
 		Run: func(*cobra.Command, []string) { panic("boom") },
 	}
-	cmd.SetArgs(nil)
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&stderr)
 
-	code := run(cmd, &stderr)
+	code := run(cmd, nil, &stdout, &stderr)
 
 	assert.Equal(t, releash.ExitInternal, code, "exit code")
 	assert.Empty(t, stdout.String(), "stdout")
