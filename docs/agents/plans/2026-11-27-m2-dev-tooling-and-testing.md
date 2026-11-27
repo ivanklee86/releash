@@ -4,7 +4,7 @@ Started 2026-11-27. Status: in progress. Milestone: [M2](../milestones/M2-dev-to
 
 ## Resume here
 
-Updated 2026-11-27. PRs 1–3 were built in parallel worktrees and reviewed, then rebased into one linear stack, because PR 1 and PR 2 both edit `docs/agents/internals.md`: `m2/quality` (PR 1), then `m2/compose` (PR 2), then `m2/integration-tests` (PR 3). All three are committed locally and pass `task`, `prek run --all-files` and `task go:test-ci` against the stack. Next: the user ships them in order, and each later branch is rebased onto `main` after the one before it merges. PR 4 (CI jobs) starts once PR 3 merges. When resuming, start the first PR in [Steps](#steps) that is not checked off and whose dependencies are merged. Before ending a session, update this section and check off finished steps.
+Updated 2026-11-27. PR 1 is merged as #9. PRs 2 and 3 are committed locally as a stack on `main`: `m2/compose`, then `m2/integration-tests`. They were built in parallel worktrees, reviewed, and pass `task`, `prek run --all-files` and `task go:test-ci` against the stack. Next: the user ships `m2/compose`, then `m2/integration-tests` once it merges (rebased onto `main` first). PR 4 (CI jobs) starts once PR 3 merges. When resuming, start the first PR in [Steps](#steps) that is not checked off and whose dependencies are merged. Before ending a session, update this section and check off finished steps.
 
 ## How to work through this plan
 
@@ -52,7 +52,7 @@ Pinned versions, checked 2026-11-27. Check for newer releases at the start of ea
 
 ### PR 1: quality hooks and Renovate
 
-- [ ] Branch `m2/quality`.
+- [x] Branch `m2/quality`. Merged as #9. Its review moved the Go version, the devcontainer base image and golangci-lint into a `go-toolchain` Renovate group that never automerges.
 - Contents: this plan; `.pre-commit-config.yaml` gains `markdownlint-cli2` and `renovate-config-validator`, as in argonap; `.markdownlint-cli2.yaml` (MD013 off, MD024 siblings only); markdown fixes so the hooks pass on all files; `renovate.json` as the milestone's Renovate section describes, adapted from argonap's (runs on Fridays, `minimumReleaseAge` 5 days, groups `go`, `ci` and `unleash`, the devcontainer manager disabled, automerge rules, regex managers for `go install` pins and `# <datasource>/<depName>` comments, digest pinning for compose images and the devcontainer base image); `docs/agents/internals.md` sections for prek and Renovate.
 - Checks: `prek run --all-files` passes, including the Renovate validator.
 - Milestone criteria: Renovate; prek hooks pass on all files.
