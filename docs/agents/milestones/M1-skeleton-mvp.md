@@ -1,5 +1,5 @@
 ---
-status: active  # planned | active | done | dropped
+status: done  # planned | active | done | dropped
 ---
 
 # M1: Skeleton MVP
