@@ -83,6 +83,10 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         # Read by the cask's repository token in .goreleaser.yaml. Prereleases do not push the cask.
         HOMEBREW_AUTH_TOKEN: ${{ secrets.HOMEBREW_AUTH_TOKEN }}
+        # Release the tag that was pushed. When several tags point at the commit, goreleaser otherwise
+        # picks the highest by git's version sort, which ranks v0.1.0-rc.1 above v0.1.0, so tagging a
+        # release on the commit of its last rc would rebuild the rc.
+        GORELEASER_CURRENT_TAG: ${{ github.ref_name }}
     - name: Attest the image SBOMs
       # goreleaser's sboms cover only the archives and docker_signs attaches no SBOM, so the image's
       # SPDX SBOMs are generated and attached here. Each platform image gets an SBOM of its own
@@ -93,6 +97,10 @@ jobs:
         set -euo pipefail
         sha256='^sha256:[0-9a-f]{64}$'
         version=$(jq -er .version dist/metadata.json)
+        if [[ "${version}" != "${GITHUB_REF_NAME#v}" ]]; then
+          echo "::error::goreleaser released ${version}, not the pushed tag ${GITHUB_REF_NAME}"
+          exit 1
+        fi
         digest=$(docker buildx imagetools inspect "${IMAGE}:${version}" --format '{{json .Manifest.Digest}}' | tr -d '"')
         if [[ ! "${digest}" =~ ${sha256} ]]; then
           echo "::error::could not read the digest of ${IMAGE}:${version}, got '${digest}'"

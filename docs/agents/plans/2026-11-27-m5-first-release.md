@@ -4,7 +4,7 @@ Started 2026-11-27. Status: in progress. Milestone: [M5](../milestones/M5-first-
 
 ## Resume here
 
-Updated 2026-11-27. PR 1 (release build and CI) is merged as #20. PR 2 (release workflow and docs) is on `m5/release-workflow`, rebased onto `main`, and goes up next with `/ship`. Their decisions are under [Reference](#reference). `release-check` and `release-notes` stay out of the `main` ruleset's required checks, as the user decided. The secret and the labels are in place (see [Labels and secret](#labels-and-secret)). Next, once PR 2 is merged: the `v0.1.0-rc.1` rehearsal, which is the release workflow's first real run. When resuming, start the first step in [Steps](#steps) that is not checked off and whose dependencies are done. Before ending a session, update this section and check off finished steps.
+Updated 2026-11-27. PRs 1 (#20) and 2 (#21) are merged. The `v0.1.0-rc.1` rehearsal passed. The first `v0.1.0` run failed: goreleaser rebuilt the rc instead (see [Release: v0.1.0](#release-v010)). The fix is on `m5/release-current-tag`. Next: merge it, then, as the user decided, move the `v0.1.0` tag to the fix commit and push it again. When resuming, start the first step in [Steps](#steps) that is not checked off and whose dependencies are done. Before ending a session, update this section and check off finished steps.
 
 ## How to work through this plan
 
@@ -74,11 +74,12 @@ Decisions made while building PR 2, within the ones above. The ones marked "for 
 
 ### Rehearsal: v0.1.0-rc.1
 
-- [ ] After PRs 1 and 2 are merged, with the user's go, Claude tags `main` as `v0.1.0-rc.1` and pushes the tag. The release workflow must pass, including its own verification. Then Claude runs spec 0002's verification commands from a clean directory against the rc. The first push creates the `ghcr.io/ivanklee86/releash` package, which may start out private; if an anonymous `docker buildx imagetools inspect` of the rc image fails, the user makes the package public in its GitHub settings before the clean-directory check. Anything that fails gets a fix PR and `v0.1.0-rc.2`.
+- [x] After PRs 1 and 2 are merged, with the user's go, Claude tags `main` as `v0.1.0-rc.1` and pushes the tag. The release workflow must pass, including its own verification. Then Claude runs spec 0002's verification commands from a clean directory against the rc. The first push creates the `ghcr.io/ivanklee86/releash` package, which may start out private; if an anonymous `docker buildx imagetools inspect` of the rc image fails, the user makes the package public in its GitHub settings before the clean-directory check. Anything that fails gets a fix PR and `v0.1.0-rc.2`. Done 2026-11-27 on `9a093bb`: the workflow passed, and from a clean directory with anonymous registry access `verify-blob`, `sha256sum --check`, `cosign verify` and `verify-attestation` passed for the index and both platform digests (index `sha256:d77b0bb6…`). Each platform SBOM lists its own architecture. The package was already public. No `latest` tag and no cask were published.
 
 ### Release: v0.1.0
 
 - [ ] With the user's go, Claude tags `v0.1.0`. The workflow passes; spec 0002's commands verify the binary and the image; `brew install ivanklee86/tap/releash` and `go install github.com/ivanklee86/releash@v0.1.0` each give a working `releash --version`.
+- First attempt, 2026-11-27: `v0.1.0` was tagged on `9a093bb`, the rc's commit. goreleaser picks the highest tag on the commit by git's version sort, which ranks `v0.1.0-rc.1` above `v0.1.0`, so it rebuilt `0.1.0-rc.1`. It re-pushed and re-signed the `0.1.0-rc.1` image (now `sha256:92031786…`, signed under the `v0.1.0` identity, without an SBOM attestation), then failed uploading into the rc's release. Nothing was published as `0.1.0`: no release, no `0.1.0` or `latest` tag, no cask. The fix sets `GORELEASER_CURRENT_TAG` to the pushed tag and fails the run if goreleaser released another version. The user decided to move the `v0.1.0` tag to the fix commit once it merges, rather than skipping to `v0.1.1`, and to leave the `0.1.0-rc.1` tag where the failed run put it: it is a superseded prerelease, and the verified rc image is still at `sha256:d77b0bb6…`. Claude does not fetch `v0.1.0` through the Go module proxy before the tag moves, so the proxy cannot cache the old commit.
 
 ### Close out
 
