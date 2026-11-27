@@ -291,6 +291,11 @@ func parseUnleashURL(s string) (*url.URL, error) {
 	if (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" {
 		return nil, errors.New("must be an absolute http or https URL")
 	}
+	// The SDK appends Client API paths to the whole URL string, so a query or
+	// fragment would swallow them.
+	if u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || strings.HasSuffix(s, "#") {
+		return nil, errors.New("must not have a query or fragment")
+	}
 	// url.Parse accepts any run of digits as a port.
 	if p := u.Port(); p != "" {
 		if n, err := strconv.Atoi(p); err != nil || n < 1 || n > 65535 {
@@ -356,6 +361,10 @@ func parseRFC3339(s string) (time.Time, error) {
 			return time.Time{}, fmt.Errorf("%q has a leap second that is not at 23:59:60 UTC", s)
 		}
 		t = t.Add(time.Second)
+		// The SDK parses currentTime as RFC 3339, which has four-digit years.
+		if t.Year() > 9999 {
+			return time.Time{}, fmt.Errorf("%q is after the year 9999", s)
+		}
 	}
 	return t, nil
 }

@@ -36,8 +36,13 @@ import (
 //     last hop
 //   - a rejected register request does not change the answer and shows only
 //     under --loud
-//   - a register request that never finishes does not change the answer or
-//     hold back a fetch failure past its own deadline
+//   - a register request answered with 300 counts as registered, as the SDK
+//     counts it
+//   - a register request that fails after redirect hops does not change the
+//     answer
+//   - a register request that never finishes, directly or after a redirect,
+//     does not change the answer or hold back a fetch failure past its own
+//     deadline
 //   - no files are written to the temp directory
 
 const testToken = "default:production.test-token"
@@ -358,6 +363,77 @@ func TestCheckDoesNotWaitForAHangingRegistration(t *testing.T) {
 	}
 }
 
+func TestCheckTreatsRegisterHTTP300AsRegistered(t *testing.T) {
+	url := fakeUnleash(t, serve(http.StatusOK, featuresJSON(enabledFlag)), serve(http.StatusMultipleChoices, ``))
+
+	stdout, stderr, code := runCheck(t, url, "on", true)
+
+	assert.Equal(t, ExitOK, code)
+	assert.Equal(t, "true\n", stdout)
+	assert.Empty(t, stderr)
+}
+
+// redirectingRegister returns a server whose register request is redirected
+// through hops paths before last answers it. Features are served normally.
+func redirectingRegister(t *testing.T, last http.HandlerFunc, hops ...string) string {
+	t.Helper()
+	features := serve(http.StatusOK, featuresJSON(enabledFlag))
+	var srv *httptest.Server
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		next := map[string]string{"/api/client/register": hops[0]}
+		for i := 0; i+1 < len(hops); i++ {
+			next[hops[i]] = hops[i+1]
+		}
+		switch {
+		case r.URL.Path == "/api/client/features":
+			features(w, r)
+		case next[r.URL.Path] != "":
+			_, _ = io.Copy(io.Discard, r.Body)
+			http.Redirect(w, r, srv.URL+next[r.URL.Path], http.StatusTemporaryRedirect)
+		case r.URL.Path == hops[len(hops)-1]:
+			last(w, r)
+		default:
+			w.WriteHeader(http.StatusAccepted)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv.URL + "/api"
+}
+
+func TestCheckHoldsARedirectedRegistrationToItsDeadline(t *testing.T) {
+	url := redirectingRegister(t, hang, "/v2/register")
+
+	start := time.Now()
+	stdout, stderr, code := runCheck(t, url, "on", true, set(OptionTimeout, timeout, "1s"))
+	elapsed := time.Since(start)
+
+	assert.Equal(t, ExitOK, code)
+	assert.Equal(t, "true\n", stdout)
+	assert.Equal(t, "releash: registering with unleash did not finish within 250ms; the answer is unaffected\n", stderr)
+	assert.Less(t, elapsed, 750*time.Millisecond, "answers soon after the register deadline")
+}
+
+func TestCheckIgnoresARegistrationThatFailsAfterRedirects(t *testing.T) {
+	// Closing the connection without an answer makes a transport error that
+	// net/http names after the previous hop, /a, not the register path.
+	hangUp := func(w http.ResponseWriter, _ *http.Request) {
+		conn, _, err := w.(http.Hijacker).Hijack()
+		if err == nil {
+			_ = conn.Close()
+		}
+	}
+	url := redirectingRegister(t, hangUp, "/a", "/b")
+
+	for range 5 {
+		stdout, stderr, code := runCheck(t, url, "on", true)
+
+		assert.Equal(t, ExitOK, code)
+		assert.Equal(t, "true\n", stdout)
+		assert.Contains(t, stderr, "releash: registering with unleash failed: ")
+		assert.NotContains(t, stderr, "returning false")
+	}
+}
+
 func TestCheckReportsTheLastHopOfARedirectedFetch(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -414,7 +490,7 @@ func TestOnErrorPassesOnOnlyFetchAndEvaluationErrors(t *testing.T) {
 		{"evaluation error", errors.New("segment does not exist"), true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			l := newSDKListener()
+			l := newSDKListener(nil)
 			l.OnError(tt.err)
 			select {
 			case got := <-l.failed:
