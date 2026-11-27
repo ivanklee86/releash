@@ -230,6 +230,14 @@ A command line that fails to parse can stop before `--format` is read, so the fo
 - Every `--format` (as `--format <value>` or `--format=<value>`) names the same valid format: that format. Given twice with the same value is still exit 2, but stdout uses it.
 - An invalid value, `--format` with no value, or two different values: empty stdout and exit 2, because there is no single format to print the fallback in.
 
+The fallback's variable names need a prefix too, and the same scan finds it:
+
+- Every `--prefix` names the same valid prefix: that prefix. Given twice with the same value is still exit 2, but stdout uses it.
+- No `--prefix` and exactly one flag name among the arguments: the default prefix derived from that flag name.
+- Otherwise, such as an invalid `--prefix`, two different prefixes, or no `--prefix` with a missing or extra flag name: empty stdout, because there is no prefix to name the variables with. The exit code is the command line error's, as usual.
+
+So a recovered panic and an option given before `variant` still print the fallback, as long as the scan finds a format and a prefix.
+
 | Exit | Meaning | stdout | stderr |
 |---|---|---|---|
 | 6 | The flag was evaluated and is disabled for the context | the fallback | error message naming `releash check` |
@@ -275,7 +283,8 @@ A fallback exits 0 even when it happens after `check` answered `true`, e.g. beca
 - Stickiness: with `--user-id` fixed, repeated runs get the same variant; with a custom stickiness property, each value maps to the same variant every time; `--loud` warns when the flag uses default stickiness and neither `--user-id` nor `--session-id` is set.
 - Fallback: every fallback case of spec 0001, invalid JSON in a `json` payload, and each unrepresentable value print the disabled variant, exit 0, are silent without `--loud`, and finish within `--timeout`.
 - Command and configuration errors: each exit code of spec 0001 prints the fallback in the requested format; an invalid `--format` exits 2 with empty stdout. An option given before `variant` exits 2. A recovered panic prints the fallback and exits 1.
-- The `--format` pre-scan: an unknown option before `--format shell` and one after it both print the fallback as `export` lines; `--format` given twice with the same value exits 2 in that format; two different values, an invalid value and a trailing `--format` exit 2 with empty stdout; `--format` after `--` is not read.
+- The `--format` pre-scan: an unknown option before `--format shell` and one after it both print the fallback as `export` lines; `--format` given twice with the same value exits 2 in that format; two different values, an invalid value and a trailing `--format` exit 2 with empty stdout; `--format` after `--` is not read; `--user-id --format` is a user ID, not a format.
+- The prefix scan: a command line error with a valid `--prefix` prints the fallback under that prefix; with no `--prefix` and one flag name, under the default prefix; an invalid `--prefix`, two different prefixes, a missing flag name and two flag names each exit with their code and empty stdout.
 - Unknown and disabled flags: an unknown flag prints the disabled variant and exits 0 with the not-found `--loud` line; a disabled flag exits 6; a flag the SDK cannot evaluate falls back with exit 0.
 - Metrics: a successful variant evaluation sends metrics, including the variant count, before exit; a fallback and exit 6 do not wait for metrics.
 
