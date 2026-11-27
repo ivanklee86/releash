@@ -94,7 +94,7 @@ func run(root *cobra.Command, args []string, stdout, stderr io.Writer) (code int
 		}
 	}()
 
-	if name, opt, ok := optionBeforeCommand(args); ok {
+	if name, opt, ok := optionBeforeCommand(root, args); ok {
 		_, _ = fmt.Fprintf(stderr, "releash: %s given before %s; put options after '%s <flag>'\nRun 'releash %s --help' for usage.\n", opt, name, name, name)
 		if c, _, err := root.Find([]string{name}); err == nil {
 			answer, _ := fallbackAnswer(c, args)
@@ -125,27 +125,64 @@ func run(root *cobra.Command, args []string, stdout, stderr io.Writer) (code int
 // optionBeforeCommand looks for.
 var answerCommands = []string{"check", "variant"}
 
-// optionBeforeCommand returns the name of the first check or variant
-// command in args and the first option that comes before it, other than
-// --help, -h, --version and -v (also written as --help=... or
-// --version=...). The root command has no other options, and cobra's lookup
-// of the subcommand guesses whether an unknown option takes a value, so
-// without this some such invocations would run the command and others would
-// fail on the root command with empty stdout.
-func optionBeforeCommand(args []string) (name, option string, ok bool) {
-	i := slices.IndexFunc(args, func(a string) bool { return slices.Contains(answerCommands, a) })
-	if i < 0 {
-		return "", "", false
+// optionBeforeCommand returns the name of the check or variant command in
+// args and the first option that comes before it, other than --help, -h,
+// --version and -v (also written as --help=... or --version=...). The root
+// command has no other options, and cobra's lookup of the subcommand guesses
+// whether an unknown option takes a value, so without this some such
+// invocations would run the command and others would fail on the root command
+// with empty stdout.
+//
+// The command is the first "check" or "variant" in args that is not the value
+// of an option: an option that takes a value in check or variant consumes the
+// next argument when it is written without "=", as it does for cobra.
+func optionBeforeCommand(root *cobra.Command, args []string) (name, option string, ok bool) {
+	var sets []*pflag.FlagSet
+	for _, n := range answerCommands {
+		if c, _, err := root.Find([]string{n}); err == nil && c != root {
+			sets = append(sets, c.Flags())
+		}
 	}
-	for _, a := range args[:i] {
+	takesValue := func(lookup func(*pflag.FlagSet) *pflag.Flag) bool {
+		return slices.ContainsFunc(sets, func(fs *pflag.FlagSet) bool {
+			fl := lookup(fs)
+			return fl != nil && fl.NoOptDefVal == ""
+		})
+	}
+
+	for i := 0; i < len(args); i++ {
+		a := args[i]
 		switch {
 		case a == "--":
 			return "", "", false
+		case slices.Contains(answerCommands, a):
+			return a, option, option != ""
 		case a == "-h", a == "-v",
 			a == "--help", strings.HasPrefix(a, "--help="),
 			a == "--version", strings.HasPrefix(a, "--version="):
+		case strings.HasPrefix(a, "--"):
+			if option == "" {
+				option = a
+			}
+			n, _, hasValue := strings.Cut(a[2:], "=")
+			if !hasValue && takesValue(func(fs *pflag.FlagSet) *pflag.Flag { return fs.Lookup(n) }) {
+				i++
+			}
 		case strings.HasPrefix(a, "-"):
-			return args[i], a, true
+			if option == "" {
+				option = a
+			}
+			// A run of shorthands ends at the first one that takes a value,
+			// which takes the rest of the argument or the next one.
+			for j := 1; j < len(a); j++ {
+				short := a[j : j+1]
+				if takesValue(func(fs *pflag.FlagSet) *pflag.Flag { return fs.ShorthandLookup(short) }) {
+					if j == len(a)-1 {
+						i++
+					}
+					break
+				}
+			}
 		}
 	}
 	return "", "", false

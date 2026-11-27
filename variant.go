@@ -37,10 +37,11 @@ exits 6.
 If Unleash cannot answer, or the payload cannot be printed, it prints the
 disabled variant and exits 0; --loud says why on stderr.
 
-A mistake in the command or its configuration prints the disabled variant,
-writes an error to stderr and exits non-zero: 2 for a bad command line, 3 for
-a missing Unleash URL or token, 4 for an invalid value and 5 for a value
-given twice.`,
+A mistake in the command or its configuration prints the disabled variant, or
+nothing when the format, prefix or flag name is invalid or ambiguous, writes
+an error to stderr and exits non-zero: 2 for a bad command line, 3 for a
+missing Unleash URL or token, 4 for an invalid value and 5 for a value given
+twice.`,
 		Version:     version,
 		Args:        checkArgs,
 		Annotations: map[string]string{answerAnnotation: variantAnswer},

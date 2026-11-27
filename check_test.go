@@ -142,6 +142,8 @@ func TestCheckCommand(t *testing.T) {
 		{name: "boolean option before check", env: configured, args: []string{"--loud", "check", "x"}, loud: true, wantCode: releash.ExitUsage, wantStderr: "releash: --loud given before check; put options after 'check <flag>'\n" + checkHelp},
 		{name: "option with a value before check", env: configured, args: []string{"--url", testURL, "check", "x"}, wantCode: releash.ExitUsage, wantStderr: "releash: --url given before check; put options after 'check <flag>'\n" + checkHelp},
 		{name: "option with = before check", env: configured, args: []string{"--env=staging", "check", "x"}, wantCode: releash.ExitUsage, wantStderr: "releash: --env=staging given before check; put options after 'check <flag>'\n" + checkHelp},
+		// --user-id takes "variant" as its value, so the command is check.
+		{name: "command name as the value of an option before check", env: configured, args: []string{"--user-id", "variant", "check", "x"}, wantCode: releash.ExitUsage, wantStderr: "releash: --user-id given before check; put options after 'check <flag>'\n" + checkHelp},
 		{name: "--timeout abc", env: configured, args: []string{"check", "x", "--timeout", "abc"}, wantCode: releash.ExitUsage, wantStderr: "releash: invalid --timeout \"abc\": must be a positive Go duration, e.g. 5s\n" + checkHelp},
 		{name: "--timeout 0", env: configured, args: []string{"check", "x", "--timeout", "0"}, wantCode: releash.ExitUsage, wantStderr: "releash: invalid --timeout \"0\": must be a positive Go duration, e.g. 5s\n" + checkHelp},
 		{name: "--timeout -1s", env: configured, args: []string{"check", "x", "--timeout=-1s"}, wantCode: releash.ExitUsage, wantStderr: "releash: invalid --timeout \"-1s\": must be a positive Go duration, e.g. 5s\n" + checkHelp},

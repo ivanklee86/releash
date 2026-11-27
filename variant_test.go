@@ -90,6 +90,7 @@ func TestVariantCommand(t *testing.T) {
 		{name: "boolean option before variant", env: configured, args: []string{"--loud", "variant", "x"}, loud: true, wantCode: releash.ExitUsage, wantStdout: dotenvFallback, wantStderr: "releash: --loud given before variant; put options after 'variant <flag>'\n" + variantHelp},
 		{name: "--format before variant", env: configured, args: []string{"--format", "shell", "variant", "x"}, wantCode: releash.ExitUsage, wantStdout: shellFallback, wantStderr: "releash: --format given before variant; put options after 'variant <flag>'\n" + variantHelp},
 		{name: "option with a value before variant", env: configured, args: []string{"--user-id", "variant", "variant", "x"}, wantCode: releash.ExitUsage, wantStdout: dotenvFallback, wantStderr: "releash: --user-id given before variant; put options after 'variant <flag>'\n" + variantHelp},
+		{name: "command name as the value of an option before variant", env: configured, args: []string{"--app-name", "check", "variant", "x"}, wantCode: releash.ExitUsage, wantStdout: dotenvFallback, wantStderr: "releash: --app-name given before variant; put options after 'variant <flag>'\n" + variantHelp},
 		{name: "variant before a flag named check", env: configured, args: []string{"variant", "--loud", "check"}, loud: true, wantCode: releash.ExitOK, wantStdout: "RELEASH_CHECK_ENABLED=false\nRELEASH_CHECK_VARIANT=disabled\n", wantStderr: "releash: flag \"check\" not found; returning disabled variant\n"},
 
 		// Validation in Variant.
@@ -240,7 +241,7 @@ func TestRootHelpListsVariant(t *testing.T) {
 	code := execute([]string{"--help"}, &stdout, &stderr, "dev")
 
 	assert.Equal(t, releash.ExitOK, code)
-	assert.Contains(t, stdout.String(), "variant")
+	assert.Regexp(t, `(?m)^\s+variant\s+Print a feature flag's variant`, stdout.String())
 }
 
 func TestPanicDuringVariantPrintsTheFallback(t *testing.T) {
