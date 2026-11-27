@@ -3,6 +3,8 @@ version: '3'
 
 vars:
   BUILD_DIR: bin
+  TEST_REPORT: report.xml
+  COVERAGE_RAW: coverage.out
 
 tasks:
   install:
@@ -14,6 +16,7 @@ tasks:
     desc: Install Go dependencies and CI tools.
     cmds:
       - task: install
+      - go install github.com/jstemmer/go-junit-report/v2@v2.1.0
       # Pinned to the version in ghcr.io/ivanklee86/devcontainer/go, so CI and the devcontainer agree.
       - go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0
 
@@ -34,6 +37,24 @@ tasks:
       - go build -o {{.BUILD_DIR}}/ .
 
   test:
-    desc: Run Go tests.
+    desc: Run unit tests. They need neither Docker nor network access.
     cmds:
       - go test -v ./...
+
+  # -count=1: the results depend on the stack, which go test's cache cannot see.
+  test-integration:
+    desc: Run unit and integration tests against the local Unleash stack (start it with task services).
+    cmds:
+      - go test -tags integration -count=1 -v ./...
+
+  test-ci:
+    desc: Run unit and integration tests, and write a JUnit report and a coverage profile.
+    vars:
+      # Product packages only: internal/integration holds test helpers.
+      COVER_PACKAGES:
+        sh: go list -tags integration ./... | grep -v /internal/integration | paste -sd, -
+    # go-junit-report copies the test output to stdout (-iocopy) and exits 1 if a test failed (-set-exit-code).
+    # pipefail also fails the task when go test fails without a failing test, e.g. on a build error.
+    set: [pipefail]
+    cmds:
+      - go test -tags integration -count=1 -coverpkg={{.COVER_PACKAGES}} -coverprofile {{.COVERAGE_RAW}} -v ./... 2>&1 | go-junit-report -iocopy -set-exit-code -out {{.TEST_REPORT}}
