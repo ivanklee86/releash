@@ -32,7 +32,7 @@ Specs (in `docs/specs`) delivered by this milestone. Check each off when it is i
 
 ## Out of scope
 
-- prek hooks, Renovate, the compose stack, integration tests, and CI's prek, integration, test report and coverage jobs (M2).
+- The full prek hook set, Renovate, the compose stack, integration tests, and CI's prek, integration, test report and coverage jobs (M2).
 - The `check` command and every option from spec 0001 (M3).
 - The Unleash SDK and anything that talks to Unleash (M4).
 - Releases: goreleaser, published binaries and container images (M5).
