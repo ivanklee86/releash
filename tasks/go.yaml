@@ -52,7 +52,7 @@ tasks:
     vars:
       # Product packages only: internal/integration holds test helpers.
       COVER_PACKAGES:
-        sh: go list ./... | grep -v /internal/integration | paste -sd, -
+        sh: go list -tags integration ./... | grep -v /internal/integration | paste -sd, -
     # go-junit-report copies the test output to stdout (-iocopy) and exits 1 if a test failed (-set-exit-code).
     # pipefail also fails the task when go test fails without a failing test, e.g. on a build error.
     set: [pipefail]

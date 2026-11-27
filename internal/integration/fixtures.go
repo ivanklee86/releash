@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
 )
 
@@ -30,7 +29,7 @@ type Flag struct {
 	// Use EnabledIn rather than reading it directly.
 	Enabled map[string]bool `json:"enabled"`
 	// Strategies are the activation strategies the seed adds to the flag in
-	// every environment, in order.
+	// every environment.
 	Strategies []Strategy `json:"strategies"`
 }
 
@@ -44,6 +43,8 @@ type Strategy struct {
 	Parameters map[string]string `json:"parameters,omitempty"`
 	// Constraints must all match for the strategy to apply.
 	Constraints []Constraint `json:"constraints,omitempty"`
+	// Disabled is true for a strategy that is switched off and never applies.
+	Disabled bool `json:"disabled,omitempty"`
 }
 
 // Constraint is one constraint of a strategy.
@@ -57,6 +58,11 @@ type Constraint struct {
 	Values []string `json:"values,omitempty"`
 	// Value holds the operand of single-value operators such as DATE_AFTER.
 	Value string `json:"value,omitempty"`
+	// Inverted negates the constraint, e.g. region IN eu then matches every
+	// region except eu.
+	Inverted bool `json:"inverted,omitempty"`
+	// CaseInsensitive makes string operators ignore case.
+	CaseInsensitive bool `json:"caseInsensitive,omitempty"`
 }
 
 // EnabledIn reports whether the flag is switched on in env. It says nothing
@@ -102,13 +108,23 @@ func (f Fixtures) Names() []string {
 	return names
 }
 
-// fixturesPath locates unleash/fixtures.json relative to this source file,
-// because go test runs each package in its own directory.
+// fixturesPath locates unleash/fixtures.json from the module root, found by
+// walking up from the working directory to go.mod. go test runs each package
+// in its own directory, and source file paths are unusable under -trimpath.
 func fixturesPath(t testing.TB) string {
 	t.Helper()
-	_, file, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("locating unleash/fixtures.json: no caller information")
+	dir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("locating unleash/fixtures.json: %v", err)
 	}
-	return filepath.Join(filepath.Dir(file), "..", "..", "unleash", "fixtures.json")
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return filepath.Join(dir, "unleash", "fixtures.json")
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			t.Fatal("locating unleash/fixtures.json: no go.mod above the working directory")
+		}
+		dir = parent
+	}
 }

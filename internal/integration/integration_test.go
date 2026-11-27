@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -26,10 +27,11 @@ type clientFeatures struct {
 }
 
 // TestClientTokensSeeTheFixtureFlags checks that the stack is seeded as
-// unleash/fixtures.json says: each client token sees every fixture flag and
-// no other, each flag is switched on or off as the fixture says for that
-// token's environment, and its strategies have the fixture's names,
-// parameters and constraints. The release scenarios in M3 and M4 rely on this.
+// unleash/fixtures.json says: each client token sees every fixture flag and no
+// other flag apart from scenario flags (integration.ScenarioFlagPrefix), each
+// flag is switched on or off as the fixture says for that token's environment,
+// and its strategies have the fixture's names, parameters and constraints. The
+// release scenarios in M3 and M4 rely on this.
 func TestClientTokensSeeTheFixtureFlags(t *testing.T) {
 	integration.RequireUnleash(t)
 	fixtures := integration.LoadFixtures(t)
@@ -41,6 +43,9 @@ func TestClientTokensSeeTheFixtureFlags(t *testing.T) {
 
 			byName := make(map[string]int, len(got.Features))
 			for i, f := range got.Features {
+				if strings.HasPrefix(f.Name, integration.ScenarioFlagPrefix) {
+					continue
+				}
 				assert.Equal(t, fixtures.Project, f.Project, "project of flag %q", f.Name)
 				byName[f.Name] = i
 			}
@@ -53,7 +58,7 @@ func TestClientTokensSeeTheFixtureFlags(t *testing.T) {
 				assert.Equal(t, flag.EnabledIn(env), f.Enabled, "flag %q enabled in %s", flag.Name, env)
 				assert.ElementsMatch(t, normalize(flag.Strategies), normalize(f.Strategies), "strategies of flag %q in %s", flag.Name, env)
 			}
-			assert.Len(t, got.Features, len(fixtures.Flags), "the %s token sees flags that are not fixtures", env)
+			assert.Len(t, byName, len(fixtures.Flags), "the %s token sees flags that are neither fixtures nor scenario flags", env)
 		})
 	}
 }

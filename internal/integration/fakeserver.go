@@ -12,8 +12,10 @@ import (
 // UnresponsiveServer starts a TCP server on the loopback address that accepts
 // connections and never responds, and returns its URL (http://127.0.0.1:port).
 // Requests to it hang until the client gives up, which is how a stuck Unleash
-// looks to releash. The server and every connection it accepted are closed
-// when the test finishes.
+// looks to releash. Callers must give their request a client timeout or a
+// context deadline: the server and every connection it accepted are closed only
+// when the test finishes, so a request without one hangs until go test's own
+// timeout.
 func UnresponsiveServer(t testing.TB) string {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")

@@ -37,11 +37,18 @@ const (
 	DefaultProductionToken  = "default:production.releash-dev-not-a-secret"
 )
 
+// ScenarioFlagPrefix starts the name of every flag that a scenario creates
+// through the Admin API. Such a flag must be archived in t.Cleanup. The smoke
+// test ignores flags with this prefix, so scenarios running in parallel with it
+// do not break it.
+const ScenarioFlagPrefix = "scenario-"
+
 // URL returns the Unleash API URL, including /api as in spec 0001, from
-// UNLEASH_URL, or DefaultURL when the variable is unset or empty. Client API
-// paths are relative to it, e.g. URL()+"/client/features".
+// UNLEASH_URL, or DefaultURL when the variable is unset or empty. A trailing
+// slash is removed, so Client API paths can be appended to it, e.g.
+// URL()+"/client/features".
 func URL() string {
-	return envOr("UNLEASH_URL", DefaultURL)
+	return strings.TrimSuffix(envOr("UNLEASH_URL", DefaultURL), "/")
 }
 
 // AdminToken returns the Admin API token from UNLEASH_ADMIN_TOKEN, or
