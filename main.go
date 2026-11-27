@@ -214,8 +214,8 @@ Unleash URL or token, 4 for an invalid value and 5 for a value given twice.`,
 	f.StringVar(&opts.AppName, releash.OptionAppName, releash.DefaultAppName, "appName in the context, and the `name` releash registers with")
 	f.StringVar(&opts.UserID, releash.OptionUserID, "", "userId in the context, as an `id`")
 	f.StringVar(&opts.SessionID, releash.OptionSessionID, "", "sessionId in the context, as an `id`")
-	f.StringVar(&opts.RemoteAddress, releash.OptionRemoteAddress, "", "remoteAddress in the context, as an `ip` address, IPv4 or IPv6")
-	f.StringVar(&opts.CurrentTime, releash.OptionCurrentTime, "", "currentTime in the context, as an RFC 3339 `timestamp`")
+	f.StringVar(&opts.RemoteAddress, releash.OptionRemoteAddress, "", "remoteAddress in the context, as an `ip` address, IPv4 or IPv6 (default: the local address of the connection to Unleash)")
+	f.StringVar(&opts.CurrentTime, releash.OptionCurrentTime, "", "currentTime in the context, as an RFC 3339 `timestamp` (default: the time of the check)")
 	f.StringArrayVar(&opts.Properties, releash.OptionProperties, nil, "custom property in the context, as `name=value`; repeat for more")
 
 	mustAnnotate(f, releash.OptionURL, envAnnotation, "UNLEASH_URL")

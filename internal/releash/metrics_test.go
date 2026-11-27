@@ -21,6 +21,7 @@ import (
 //     is silent without --loud, has its own --loud line, and does not hold
 //     the check past --timeout
 //   - a fallback does not wait for metrics
+//   - a send answered with 300 counts as accepted, as the SDK counts it
 
 // metricsPost is one request the metrics fake received.
 type metricsPost struct {
@@ -168,4 +169,15 @@ func TestCheckDoesNotWaitForMetricsAfterAFallback(t *testing.T) {
 			assert.Less(t, time.Since(start), 500*time.Millisecond)
 		})
 	}
+}
+
+func TestCheckCountsAMetricsSendAnsweredWith300AsAccepted(t *testing.T) {
+	// The SDK accepts 300 as well as 2xx, so this is not a failed send.
+	url := fakeWithMetrics(t, featuresJSON(enabledFlag), &metricsRecorder{}, serve(http.StatusMultipleChoices, ""))
+
+	stdout, stderr, code := runCheck(t, url, "on", true)
+
+	assert.Equal(t, ExitOK, code)
+	assert.Equal(t, "true\n", stdout)
+	assert.Empty(t, stderr)
 }

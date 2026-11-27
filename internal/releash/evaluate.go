@@ -25,6 +25,11 @@ const (
 	metricsPath  = "/client/metrics"
 )
 
+// refreshInterval is far longer than any check, so the SDK fetches the flags
+// once: a failed later refresh would reach OnError while the check waits for
+// metrics and look like an evaluation error.
+const refreshInterval = 24 * time.Hour
+
 // outcome is the answer evaluate gives for one check.
 type outcome struct {
 	// enabled is the answer. It is false whenever fallback is set.
@@ -51,8 +56,11 @@ type evaluator func(ctx context.Context, req checkRequest) outcome
 // the feature fetch needs. The answer is false, with fallback set, when the
 // first feature fetch fails, is not a 2xx response, or does not finish in
 // time, when the flag is not in the fetched flags, or when the SDK cannot
-// evaluate it. Fetched flags are kept in memory only, so evaluate never
-// reads or writes files, and nothing carries over from one call to the next.
+// evaluate it. When req.context has no remoteAddress, the flag is evaluated
+// with the local IP address of the connection that fetched the flags, or,
+// when there is none, without one and with a note saying so. Fetched flags
+// are kept in memory only, so evaluate never reads or writes files, and
+// nothing carries over from one call to the next.
 //
 // After an evaluated answer, evaluate waits within req.timeout for Unleash to
 // accept the check's usage metrics. A failed or unfinished send adds a note
@@ -64,10 +72,11 @@ func evaluate(ctx context.Context, req checkRequest) outcome {
 	base := http.DefaultTransport.(*http.Transport).Clone()
 	defer base.CloseIdleConnections()
 	log := &requestLog{}
+	local := &localAddress{}
 	httpClient := &http.Client{
 		Timeout: req.timeout,
 		Transport: &boundedTransport{
-			base:            base,
+			base:            &localAddressTransport{base: base, addr: local},
 			run:             runCtx,
 			registerTimeout: registerTimeout(req.timeout),
 			log:             log,
@@ -88,6 +97,7 @@ func evaluate(ctx context.Context, req checkRequest) outcome {
 		unleash.WithStorage(memoryStorage{}),
 		unleash.WithListener(events),
 		unleash.WithMetricsInterval(metricsInterval),
+		unleash.WithRefreshInterval(refreshInterval),
 	)
 	if err != nil {
 		return outcome{fallback: fmt.Sprintf("cannot start the Unleash client: %v; returning false", err)}
@@ -104,12 +114,17 @@ func evaluate(ctx context.Context, req checkRequest) outcome {
 			break
 		}
 		fetched = true
+		var note string
+		req.context, note = withRemoteAddress(req.context, local.address())
 		out = evaluateFlag(client, req)
+		if note != "" {
+			out.notes = append(out.notes, note)
+		}
 		// A fallback has no usage worth waiting to report.
 		if out.fallback == "" {
 			var err error
 			if metricsNote, err = awaitMetrics(runCtx, events, log, req.timeout); err != nil {
-				out = evaluationFailure(req.flag, err)
+				out = out.evaluationFailed(req.flag, err)
 			}
 		}
 	case err := <-events.failed:
@@ -126,7 +141,7 @@ func evaluate(ctx context.Context, req checkRequest) outcome {
 
 	if fetched && out.fallback == "" {
 		if err := evaluationError(client, events); err != nil {
-			out = evaluationFailure(req.flag, err)
+			out = out.evaluationFailed(req.flag, err)
 		}
 	}
 
@@ -145,10 +160,10 @@ func evaluate(ctx context.Context, req checkRequest) outcome {
 	return out
 }
 
-// evaluationFailure returns the fallback for flag after the SDK reported err
-// while evaluating it.
-func evaluationFailure(flag string, err error) outcome {
-	return outcome{fallback: fmt.Sprintf("unleash could not evaluate flag %q: %v; returning false", flag, err)}
+// evaluationFailed returns o turned into the fallback for flag after the SDK
+// reported err while evaluating it. The notes in o are kept.
+func (o outcome) evaluationFailed(flag string, err error) outcome {
+	return outcome{fallback: fmt.Sprintf("unleash could not evaluate flag %q: %v; returning false", flag, err), notes: o.notes}
 }
 
 // evaluateFlag evaluates req.flag with a client whose first fetch succeeded.
@@ -181,7 +196,7 @@ func evaluationError(client *unleash.Client, events *sdkListener) error {
 	for {
 		select {
 		case err := <-client.Errors():
-			if events.log.backgroundRequest(err) == "" {
+			if isEvaluationError(err) {
 				return err
 			}
 		default:
@@ -246,8 +261,7 @@ func registerFailure(seen requestOutcome, limit time.Duration) string {
 		return fmt.Sprintf("registering with unleash did not finish within %s; the answer is unaffected", limit)
 	case seen.err != nil:
 		return fmt.Sprintf("registering with unleash failed: %v; the answer is unaffected", seen.err)
-	// The SDK treats 300 as a successful registration too.
-	case seen.status != 0 && !isSuccess(seen.status) && seen.status != http.StatusMultipleChoices:
+	case seen.status != 0 && !sdkAccepted(seen.status):
 		return fmt.Sprintf("registering with unleash failed: HTTP %d; the answer is unaffected", seen.status)
 	default:
 		return ""
@@ -255,6 +269,10 @@ func registerFailure(seen requestOutcome, limit time.Duration) string {
 }
 
 func isSuccess(status int) bool { return status >= 200 && status <= 299 }
+
+// sdkAccepted reports whether the SDK counts status as a successful register
+// or metrics send: it accepts 300 as well as 2xx.
+func sdkAccepted(status int) bool { return isSuccess(status) || status == http.StatusMultipleChoices }
 
 // isTimeout reports whether err is a timeout or a cancelled request.
 func isTimeout(err error) bool {
@@ -289,7 +307,8 @@ type sdkListener struct {
 	ready     chan struct{}
 	// failed receives the first error that is not from a register or metrics
 	// request: before ready, a failed feature fetch; after it, a failed
-	// evaluation.
+	// evaluation, which is never a *url.Error. The SDK fetches the flags only
+	// once (see refreshInterval), so no later fetch errors arrive.
 	failed chan error
 	// log tells register and metrics errors apart after redirects. It may be
 	// nil, and then only the path in the error is used.
@@ -316,14 +335,36 @@ func newSDKListener(log *requestLog) *sdkListener {
 // OnReady is called after the first feature fetch that did not fail.
 func (l *sdkListener) OnReady() { l.readyOnce.Do(func() { close(l.ready) }) }
 
+func (l *sdkListener) isReady() bool {
+	select {
+	case <-l.ready:
+		return true
+	default:
+		return false
+	}
+}
+
+// isEvaluationError reports whether err, reported after the feature fetch,
+// can be an evaluation error. Evaluation errors never carry a URL.
+func isEvaluationError(err error) bool {
+	var ue *url.Error
+	return !errors.As(err, &ue)
+}
+
 // OnUpdate is called after later fetches that changed the flags.
 func (l *sdkListener) OnUpdate() {}
 
 // OnError receives errors from every SDK request and from evaluation. Only
 // errors from the feature fetch and from evaluation are passed on: the SDK
 // reports transport errors of register and metrics requests here too, as a
-// *url.Error. Their HTTP status errors go to OnWarning.
+// *url.Error. Their HTTP status errors go to OnWarning. After ready, any
+// *url.Error is from a register or metrics request, whatever its path, since
+// the one feature fetch is done.
 func (l *sdkListener) OnError(err error) {
+	if l.isReady() && !isEvaluationError(err) {
+		l.signalMetricsProblem()
+		return
+	}
 	switch l.log.backgroundRequest(err) {
 	case metricsPath:
 		l.signalMetricsProblem()

@@ -30,7 +30,7 @@ func awaitMetrics(runCtx context.Context, events *sdkListener, log *requestLog, 
 		case <-events.metricsProblem:
 			// The signal may be about another request, such as a warning
 			// about the register request; the log says whether it was ours.
-			if seen := log.outcome(metricsPath); seen.err != nil || (seen.status != 0 && !isSuccess(seen.status)) {
+			if seen := log.outcome(metricsPath); seen.err != nil || (seen.status != 0 && !sdkAccepted(seen.status)) {
 				return metricsFailure(seen, timeout), nil
 			}
 		case <-runCtx.Done():
@@ -42,7 +42,7 @@ func awaitMetrics(runCtx context.Context, events *sdkListener, log *requestLog, 
 			seen := log.outcome(metricsPath)
 			// Unleash accepted the counts, but the deadline came before the
 			// SDK passed that on.
-			if isSuccess(seen.status) {
+			if sdkAccepted(seen.status) {
 				return "", nil
 			}
 			return metricsFailure(seen, timeout), nil
@@ -74,7 +74,8 @@ func (l *sdkListener) signalMetricsProblem() {
 // OnCount is called for every evaluation the SDK counts.
 func (l *sdkListener) OnCount(string, bool) {}
 
-// OnSent is called after Unleash answered a metrics send with a 2xx status.
+// OnSent is called after Unleash answered a metrics send with a 2xx or 300
+// status, which the SDK counts as accepted.
 func (l *sdkListener) OnSent(unleash.MetricsData) { l.sentOnce.Do(func() { close(l.sent) }) }
 
 // OnRegistered is called after the register request was answered, whatever
