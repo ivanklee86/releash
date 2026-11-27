@@ -4,7 +4,7 @@ Started 2026-11-27. Status: in progress. Milestone: [M1](../milestones/M1-skelet
 
 ## Resume here
 
-Updated 2026-11-27. PRs 1–3 are merged (#2, #4, #5). PR 4 is committed on branch `ci`, rebased onto `main`, and is ready for the user to `/ship`. After PR 4 merges with CI green, do the close-out step. Deferred from PR 3's review: `releash bogus --help` and `releash bogus --version` exit 0, because cobra handles those flags before it validates arguments. ADR 0004 exempts help and version output, and M3's `check` subcommand makes cobra reject unknown commands first, so check this again in M3. When resuming, start the first PR in [Steps](#steps) that is not checked off and whose dependencies are merged. Before ending a session, update this section and check off finished steps.
+Updated 2026-11-27. PRs 1–3 are merged (#2, #4, #5). PR 4 is open as #7 on branch `ci`, and is waiting for CI and the user's merge. After PR 4 merges with CI green, check it off and do the close-out step. The user decided that a stray argument together with `--help` or `--version` may exit 0, and the M1 exit criterion now says so. When resuming, start the first PR in [Steps](#steps) that is not checked off and whose dependencies are merged. Before ending a session, update this section and check off finished steps.
 
 ## How to work through this plan
 
@@ -72,7 +72,7 @@ Check for newer releases at the start of each PR, and use them if they are avail
 - Behaviour:
   - `releash` and `releash --help` print help to stdout and exit 0.
   - `releash --version` prints the injected `version` if set. Otherwise it prints the main module version from `runtime/debug.ReadBuildInfo` when that is not empty or `(devel)`, and otherwise `dev`. It exits 0.
-  - An unknown command or option prints an error to stderr, leaves stdout empty, and exits 2. The `true`/`false` stdout contract covers only `releash check` (spec 0001).
+  - An unknown command or option prints an error to stderr, leaves stdout empty, and exits 2. A stray argument together with `--help` or `--version` prints help or the version and exits 0 instead (see the M1 milestone). The `true`/`false` stdout contract covers only `releash check` (spec 0001).
 - Tests, written first as a list in the PR description, then as code: no arguments; `--help`; `--version` with an injected value, with only build info, and with neither (make the build-info lookup a variable or parameter the test can replace); unknown command; unknown option. Each asserts stdout, stderr and the exit code.
 - Checks: `go build ./...`, `go vet ./...`, `go test ./...`, `gofmt -l .` is empty.
 - Milestone criteria: module layout, cobra and viper, help, version, exit 2, `go build` and `go test`.
@@ -80,7 +80,7 @@ Check for newer releases at the start of each PR, and use them if they are avail
 
 ### PR 4: Task, lint and CI
 
-- [x] Branch `ci`, stacked on `go-skeleton`. Committed 2026-11-27, not yet merged. Third-party GitHub Actions are pinned to full commit SHAs with a `# vX.Y.Z` comment (argonap uses major tags), so a moved or compromised tag cannot change what CI runs. `install-ci` installs only golangci-lint, because go-junit-report is needed only by M2's test reports.
+- [ ] Branch `ci`, rebased onto `main`. Open as #7. CI runners are pinned to `ubuntu-26.04`, and only the lint job caches `~/go/bin`, keyed on the Go version and `tasks/go.yaml`. `renovate.json` gains regex managers for the `go install` pins in `tasks/go.yaml` and Task's version in the setup-task action. Third-party GitHub Actions are pinned to full commit SHAs with a `# vX.Y.Z` comment (argonap uses major tags), so a moved or compromised tag cannot change what CI runs. `install-ci` installs only golangci-lint, because go-junit-report is needed only by M2's test reports.
 - Contents: `Taskfile.yaml` and `tasks/go.yaml` (`install`, `install-ci`, `fmt`, `lint`, `build`, `test`); `.golangci.yml` (with `gofmt` and `goimports` formatters); `.github/actions/setup-task/action.yml`; `.github/workflows/ci.yaml` with `lint` and `test` jobs; `.gitignore` additions for `bin/`, `dist/`, `.task/` and coverage files; `docs/agents/internals.md` covering the layout, the orchestrator pattern, tasks and CI.
 - Checks: `task` passes locally; CI passes on the PR.
 - Milestone criteria: Task, golangci-lint, CI, `internals.md`.

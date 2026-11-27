@@ -4,13 +4,10 @@ description: 'Install a pinned Task CLI, restored from the Actions cache instead
 inputs:
   version:
     # Always an exact version, never a `.x` range. arduino/setup-task resolves
-    # a range by listing go-task/task's tags via api.github.com, and that call
-    # is anonymous unless `repo-token` is set — 60 requests/hour shared by every
-    # job running on that runner's public IP. That's what broke CI on the
-    # action's own `3.x` default ("API rate limit exceeded for <runner ip>",
-    # every job that installs Task; see tangle ADR 0018). A valid semver
-    # short-circuits the lookup in the action's own `computeVersion()`, so a
-    # pinned version makes no api.github.com request at all.
+    # a range by listing go-task/task's tags through api.github.com, which is
+    # anonymous unless `repo-token` is set and shares a limit of 60 requests an
+    # hour with every job on the runner's IP. An exact version skips that
+    # lookup. Renovate updates it through the comment after `default`.
     description: 'Exact Task version to install, without the leading `v`.'
     required: false
     default: '3.54.0' # github-releases/go-task/task
