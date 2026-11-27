@@ -1,0 +1,15 @@
+coverage:
+  paths:
+    - coverage.out
+  # No gate yet: there is almost no product code before M3 and M4. Consider one once the baseline
+  # settles.
+report:
+  datastores:
+    - artifact://${GITHUB_REPOSITORY}
+  if: is_default_branch
+diff:
+  datastores:
+    - artifact://${GITHUB_REPOSITORY}
+  if: is_pull_request
+comment:
+  if: is_pull_request

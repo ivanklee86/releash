@@ -4,7 +4,7 @@ Started 2026-11-27. Status: in progress. Milestone: [M2](../milestones/M2-dev-to
 
 ## Resume here
 
-Updated 2026-11-27. PRs 1 and 2 are merged (#9, #11). PR 3 is committed locally on `m2/integration-tests`, rebased onto `main`, and passes `task`, `prek run --all-files` and `task go:test-ci` against the stack. Next: the user ships it. PR 4 (CI jobs) starts once PR 3 merges. When resuming, start the first PR in [Steps](#steps) that is not checked off and whose dependencies are merged. Before ending a session, update this section and check off finished steps.
+Updated 2026-11-27. PRs 1–3 are merged (#9, #11, #12). PR 4 is committed locally on `m2/ci`; it needs CI to pass on its own pull request, since it adds the jobs. Next: the user ships it, then the close-out step. When resuming, start the first PR in [Steps](#steps) that is not checked off and whose dependencies are merged. Before ending a session, update this section and check off finished steps.
 
 ## How to work through this plan
 
@@ -69,7 +69,7 @@ Pinned versions, checked 2026-11-27. Check for newer releases at the start of ea
 
 ### PR 3: integration test scaffolding
 
-- [ ] Branch `m2/integration-tests`, stacked on `m2/compose`.
+- [x] Branch `m2/integration-tests`. Merged as #12. Its review added `ScenarioFlagPrefix`: flags that scenarios create start with `scenario-`, are archived in cleanup, and are ignored by the smoke test.
 - Contents: an `integration` package or `_test.go` files behind the `integration` build tag; helpers for the fixture-flag catalog (read from `unleash/fixtures.json`), client and admin tokens from the environment with compose defaults, a reachability check that fails naming `task services`, and a fake HTTP server that accepts connections and never responds; scenario stubs named after pipeline usage that skip with a note naming M3 or M4; one passing smoke test that fetches flags through the Client API with each client token; `tasks/go.yaml` gains `test-integration` and `test-ci` (JUnit report and coverage profile, as argonap's, with `pipefail`) and installs go-junit-report in `install-ci`; `docs/agents/internals.md` section on running each kind of test.
 - Checks: `go test ./...` passes with Docker stopped; `task go:test-integration` passes against the stack; `task go:test-ci` writes `report.xml` and `coverage.out`.
 - Milestone criteria: Tests; `task go:test`, `task go:test-integration`, `task go:test-ci`.
@@ -77,7 +77,7 @@ Pinned versions, checked 2026-11-27. Check for newer releases at the start of ea
 
 ### PR 4: CI jobs
 
-- [ ] Branch `m2/ci`.
+- [ ] Branch `m2/ci`. The `pre-commit` job skips the golangci-lint and `go mod tidy` hooks, which the `lint` job already runs. The `integration` job installs only go-junit-report through a new `go:install-test-ci` task, and caches `~/go/bin` under its own key.
 - Contents: `ci.yaml` gains a `pre-commit` job (prek-action, SHA-pinned), an `integration` job (`task services`, `task go:test-ci`, compose logs on failure, publish-unit-test-result-action and octocov, both SHA-pinned, with the write permissions they need), and `.octocov.yml`.
 - Checks: every job passes on the PR, and on `main` after merging.
 - Milestone criteria: Quality and CI.
