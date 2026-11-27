@@ -118,6 +118,8 @@ Run `task` with no arguments to format, lint, build and test. The tasks in `task
 
 `.github/workflows/ci.yaml` runs on pull requests and pushes to `main`. It has read-only `contents` permission by default and cancels superseded pull request runs. Every job runs on `ubuntu-26.04`.
 
+The `main` repository ruleset (set in GitHub, not in the repository) requires a pull request for every change to `main`, with no required approvals, and requires the `lint`, `test`, `pre-commit` and `integration` checks to pass before merging. It also blocks force-pushes and deleting `main`, and it has no bypass list. Branches need not be up to date with `main` before merging. Renovate's automerge goes through GitHub's native auto-merge, so these required checks are what makes it wait for CI.
+
 | Job | What it does |
 |---|---|
 | `lint` | Checks `gofmt`, runs `task go:lint` and `task go:build`, and checks that `go.mod` and `go.sum` are tidy with `go mod tidy -diff`. |

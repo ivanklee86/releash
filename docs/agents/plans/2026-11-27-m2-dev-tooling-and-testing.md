@@ -36,8 +36,8 @@ Pinned versions, checked 2026-11-27. Check for newer releases at the start of ea
 | Tool or image | Version |
 |---|---|
 | `unleashorg/unleash-server` | 8.3.1 |
-| `postgres` | 18 (exact tag chosen in PR 2) |
-| `python` (seed) | newest stable `-alpine` |
+| `postgres` | 18.7-alpine (pinned by digest in `docker-compose.yaml`) |
+| `python` (seed) | 3.15.2-alpine (pinned by digest in `docker-compose.yaml`) |
 | `github.com/Unleash/unleash-go-sdk/v6` | v6.5.1 (M4 adds it; listed for the Renovate group) |
 | Docker Compose (devcontainer) | v5.8.0 |
 | markdownlint-cli2 hook | v0.24.2 |
