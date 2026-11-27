@@ -1,0 +1,44 @@
+# https://taskfile.dev
+version: '3'
+
+vars:
+  IMAGE: ghcr.io/ivanklee86/releash
+
+tasks:
+  check:
+    desc: Validate .goreleaser.yaml.
+    cmds:
+      - goreleaser check
+
+  snapshot:
+    desc: Build every archive, SBOM, checksums.txt and both image platforms into dist/, without signing or publishing. Needs goreleaser, syft, and Docker with arm64 emulation.
+    # A snapshot skips publishing but not the signs pipe, and cosign keyless signing needs the release
+    # workflow's OIDC token, so signing is skipped explicitly.
+    cmds:
+      - goreleaser release --snapshot --clean --skip=sign
+
+  smoke-test:
+    desc: Run the snapshot's linux/amd64 binary and both images with --version, and check that each reports the snapshot version. Run release:snapshot first.
+    vars:
+      VERSION:
+        sh: jq -er .version dist/metadata.json
+      BINARY:
+        sh: jq -er '.[] | select(.type == "Binary" and .goos == "linux" and .goarch == "amd64") | .path' dist/artifacts.json
+    cmds:
+      - task: expect-version
+        vars: {VERSION: '{{.VERSION}}', CMD: '{{.BINARY}} --version'}
+      - for: [amd64, arm64]
+        task: expect-version
+        vars: {VERSION: '{{.VERSION}}', CMD: 'docker run --rm --platform linux/{{.ITEM}} {{.IMAGE}}:{{.VERSION}}-{{.ITEM}} --version'}
+
+  expect-version:
+    internal: true
+    silent: true
+    cmds:
+      - |
+        got=$({{.CMD}})
+        echo "{{.CMD}}: ${got}"
+        if [ "${got}" != "releash version {{.VERSION}}" ]; then
+          echo "expected \"releash version {{.VERSION}}\"" >&2
+          exit 1
+        fi

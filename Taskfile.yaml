@@ -3,6 +3,7 @@ version: '3'
 
 includes:
   go: ./tasks/go.yaml
+  release: ./tasks/release.yaml
   unleash:
     taskfile: ./tasks/unleash.yaml
     flatten: true

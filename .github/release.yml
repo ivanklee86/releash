@@ -1,0 +1,20 @@
+# Categories for GitHub's generated release notes (spec 0002, "Release notes"). A pull request goes in
+# the first category whose label it carries. ci.yaml's release-notes job checks this file against the
+# spec, so change both together.
+changelog:
+  categories:
+    - title: Breaking changes
+      labels:
+        - breaking-change
+    - title: Features
+      labels:
+        - enhancement
+    - title: Bug fixes
+      labels:
+        - bug
+    - title: Dependencies
+      labels:
+        - dependencies
+    - title: Other changes
+      labels:
+        - "*"

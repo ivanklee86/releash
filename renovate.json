@@ -3,6 +3,9 @@
   "extends": [
     "config:recommended"
   ],
+  "labels": [
+    "dependencies"
+  ],
   "schedule": [
     "on friday"
   ],
@@ -30,7 +33,7 @@
       "rangeStrategy": "bump"
     },
     {
-      "description": "Compose images and the devcontainer base image are pinned by tag and digest",
+      "description": "Compose images and the Dockerfile base images (the release image and the devcontainer) are pinned by tag and digest",
       "matchManagers": [
         "docker-compose",
         "dockerfile"
@@ -46,7 +49,8 @@
         "go-task/task",
         "goreleaser/goreleaser",
         "k1LoW/octocov",
-        "j178/prek"
+        "j178/prek",
+        "anchore/syft"
       ],
       "groupName": "ci"
     },
@@ -118,9 +122,9 @@
     },
     {
       "customType": "regex",
-      "description": "Task version input on the setup-task composite action",
+      "description": "Version input defaults on the composite actions in .github/actions (Task, syft)",
       "managerFilePatterns": [
-        "/^\\.github/actions/setup-task/action\\.yml$/"
+        "/^\\.github/actions/[^/]+/action\\.yml$/"
       ],
       "matchStrings": [
         "default: '(?<currentValue>[^']+)' # (?<datasource>[^/\\s]+)/(?<depName>\\S+)"
