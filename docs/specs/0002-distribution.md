@@ -25,7 +25,7 @@ Non-goals:
 
 # Guide-level explanation
 
-Download a pinned release in a pipeline, verify it, and run it:
+Download a pinned release in a pipeline, verify it, and run it. Verifying needs cosign v3 or later, because releases are signed in cosign v3's Sigstore bundle format, which cosign v2 reads only with `--new-bundle-format`:
 
 ```sh
 VERSION=0.1.0

@@ -234,6 +234,10 @@ Both scripts run with `set -euo pipefail`. A prerelease tag such as `v0.1.0-rc.1
 
 goreleaser publishes before the attestation and verification steps run, so a failure there leaves a published release without an SBOM attestation, or one that does not verify. The failed run is the signal. The plan's rehearsal handles this by fixing the cause and tagging the next `-rc.N`; what to do with a failed non-prerelease is not decided yet.
 
+The README and spec 0002 say verification needs cosign v3 or later, because cosign v3 writes Sigstore bundles (OCI referrers for the image signature and attestation, a new-format bundle for `checksums.txt`) that cosign v2 verifies only with `--new-bundle-format`. Revisit that wording if `COSIGN_VERSION` moves to a new major version.
+
+The README's GitHub Actions example pins `actions/checkout` and `sigstore/cosign-installer` by SHA, as the workflows do. Renovate's `github-actions` manager reads only workflow and action files, so it never updates the README. When Renovate bumps either action in `ci.yaml` or `release.yaml`, update the README example to the same SHA and tag by hand.
+
 ## Local Unleash stack
 
 `docker-compose.yaml` runs a local Unleash for trying releash by hand and for integration tests. Every image is pinned by tag and digest. The compose project is named `releash`.

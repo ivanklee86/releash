@@ -6,7 +6,7 @@ releash is in early development. The first release, v0.1.0, is being prepared in
 
 ## Install
 
-releash runs in pipelines that decide whether to deploy, so pin an exact version and verify what you download. Every release is built by [`.github/workflows/release.yaml`](.github/workflows/release.yaml) and signed with [cosign](https://docs.sigstore.dev/cosign/system_config/installation/) keyless signing, so verifying needs cosign but no keys. The details are in [spec 0002](docs/specs/0002-distribution.md).
+releash runs in pipelines that decide whether to deploy, so pin an exact version and verify what you download. Every release is built by [`.github/workflows/release.yaml`](.github/workflows/release.yaml) and signed with [cosign](https://docs.sigstore.dev/cosign/system_config/installation/) keyless signing, so verifying needs cosign but no keys. Use cosign v3 or later: releases are signed with cosign v3, which writes Sigstore bundles, and cosign v2 does not read that format by default, so its `verify`, `verify-attestation` and `verify-blob` fail on a valid release. If you must use cosign v2, add `--new-bundle-format` to each of those commands. The details are in [spec 0002](docs/specs/0002-distribution.md).
 
 ### Binary
 
