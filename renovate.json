@@ -11,6 +11,10 @@
   "pre-commit": {
     "enabled": true
   },
+  "devcontainer": {
+    "description": "Features are maintained in the shared gantry base (ivanklee86/devcontainers), not here; the base image digest in .devcontainer/Dockerfile is still updated by the dockerfile manager",
+    "enabled": false
+  },
   "packageRules": [
     {
       "matchDatasources": [
@@ -65,54 +69,6 @@
       "groupName": "ci"
     },
     {
-      "matchManagers": [
-        "devcontainer"
-      ],
-      "groupName": "devcontainer",
-      "automerge": true,
-      "platformAutomerge": true
-    },
-    {
-      "matchUpdateTypes": [
-        "major"
-      ],
-      "automerge": true,
-      "platformAutomerge": true
-    },
-    {
-      "matchDatasources": [
-        "go",
-        "golang-version"
-      ],
-      "matchUpdateTypes": [
-        "major"
-      ],
-      "automerge": false
-    },
-    {
-      "matchManagers": [
-        "dockerfile"
-      ],
-      "matchPackageNames": [
-        "golang",
-        "ghcr.io/ivanklee86/devcontainer/go"
-      ],
-      "matchUpdateTypes": [
-        "major"
-      ],
-      "automerge": false
-    },
-    {
-      "description": "A Postgres or Python major can drop support the pinned Unleash or seed script relies on",
-      "matchManagers": [
-        "docker-compose"
-      ],
-      "matchUpdateTypes": [
-        "major"
-      ],
-      "automerge": false
-    },
-    {
       "matchUpdateTypes": [
         "minor",
         "patch",
@@ -121,6 +77,13 @@
       ],
       "automerge": true,
       "platformAutomerge": true
+    },
+    {
+      "description": "A go directive bump must land with the devcontainer base image tag, because the devcontainer golangci-lint is built with the image Go",
+      "matchDatasources": [
+        "golang-version"
+      ],
+      "automerge": false
     },
     {
       "description": "The server image and the SDK move together and always need a human: the integration tests are the only guard against behaviour changes, and the seed script must be checked against the new Admin API",

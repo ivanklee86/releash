@@ -25,13 +25,18 @@ Decisions made while planning:
 - The seed script is Python (standard library only) in a pinned `python:<version>-alpine` image, because the seed needs HTTP and JSON handling and the image needs nothing installed at runtime. The fixture flags live in `unleash/fixtures.json` next to `unleash/seed.py`.
 - Compose images are pinned by tag and digest (`image: name:tag@sha256:...`), so Renovate can update both.
 - The fixed dev tokens use Unleash's token format (`<project>:<environment>.<secret>` for client tokens, `*:*.<secret>` for the admin token), with secrets that say they are not secret, e.g. `default:production.releash-dev-not-a-secret`.
+- Renovate's `devcontainer` manager is disabled, so there is no `devcontainer` group. Devcontainer features are owned by gantry's shared base (`ivanklee86/devcontainers`) and updated there; Renovate still updates the base image digest in `.devcontainer/Dockerfile` through the `dockerfile` manager.
+- Only minor, patch, pin and digest updates automerge, as the milestone says. There is no blanket rule that automerges major updates.
+- Go version (`golang-version`) updates never automerge, whatever their size. A `go` directive bump must land together with the devcontainer base image tag, because the devcontainer's golangci-lint is built with the image's Go.
+- The Unleash server creates the client tokens through `INIT_BACKEND_API_TOKENS` instead of the deprecated `INIT_CLIENT_API_TOKENS`. PR 2 rewords the milestone line that names the old variable.
+- Postgres is pinned to major 18 rather than 19, because 19 had been out only 8 days when the plan was checked.
 
 Pinned versions, checked 2026-11-27. Check for newer releases at the start of each PR:
 
 | Tool or image | Version |
 |---|---|
 | `unleashorg/unleash-server` | 8.3.1 |
-| `postgres` | 19 (the newest major that the pinned Unleash supports; check its docs) |
+| `postgres` | 18 (exact tag chosen in PR 2) |
 | `python` (seed) | newest stable `-alpine` |
 | `github.com/Unleash/unleash-go-sdk/v6` | v6.5.1 (M4 adds it; listed for the Renovate group) |
 | Docker Compose (devcontainer) | v5.8.0 |

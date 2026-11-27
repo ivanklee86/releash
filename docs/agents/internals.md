@@ -71,7 +71,7 @@ Placeholders such as `<topic>` in prose are escaped (`\<topic\>`) or put in back
 
 ### Renovate
 
-`renovate.json` extends `config:recommended`, runs on Fridays, and waits five days (`minimumReleaseAge`) after a release before proposing it. It covers Go modules and the `go` directive in `go.mod` (bumped through `rangeStrategy: bump`), GitHub Actions, prek hooks, the devcontainer base image and features, and Docker images in `docker-compose.yaml`. Compose images and the devcontainer base image are pinned by tag and digest. Regex managers pick up versions the built-in managers cannot see:
+`renovate.json` extends `config:recommended`, runs on Fridays, and waits five days (`minimumReleaseAge`) after a release before proposing it. It covers Go modules and the `go` directive in `go.mod` (bumped through `rangeStrategy: bump`), GitHub Actions, prek hooks, the devcontainer base image in `.devcontainer/Dockerfile`, and Docker images in `docker-compose.yaml`. Compose images and the devcontainer base image are pinned by tag and digest. The `devcontainer` manager is disabled: devcontainer features are maintained in the shared gantry base (`ivanklee86/devcontainers`), not in this repository. Regex managers pick up versions the built-in managers cannot see:
 
 - `go install <pkg>@<version>` lines in `tasks/go.yaml`
 - Task's version in `.github/actions/setup-task/action.yml`
@@ -83,12 +83,12 @@ Updates are grouped into one pull request per group:
 |---|---|
 | `go` | Go modules (including tools pinned with `go install`), the Go version, and the devcontainer base image |
 | `ci` | GitHub Actions, prek hooks, and CI tools pinned through `github-releases` comments (Task, prek, octocov, goreleaser) |
-| `devcontainer` | Devcontainer features |
 | `unleash` | The `unleashorg/unleash-server` image and the `github.com/Unleash/unleash-go-sdk` module |
 
-Minor, patch, pin and digest updates automerge once CI passes, and so do major updates not listed below. These always need a human:
+Minor, patch, pin and digest updates automerge once CI passes, except for the cases below. Major updates never automerge. These always need a human:
 
-- major updates of Go modules, Go and the devcontainer base image
+- major updates of Go modules and the devcontainer base image
+- any update of the Go version (the `go` directive in `go.mod`), because it must land together with the devcontainer base image tag: the devcontainer's golangci-lint is built with the image's Go, and golangci-lint fails on a `go` directive newer than the Go it was built with
 - major updates of compose images (Postgres and the seed's Python image), because a new major can drop support that the pinned Unleash or the seed script relies on
 - any update in the `unleash` group, because the integration tests are the only guard against behaviour changes there. Upgrade the seed script with the server image, since it uses the Admin API.
 
