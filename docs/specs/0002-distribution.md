@@ -1,11 +1,11 @@
 - Feature Name: `distribution`
 - Start Date: 2026-11-27
-- Status: accepted
+- Status: implemented
 - Related ADRs: [0005](../adrs/0005-cosign-keyless-signing.md)
 
 # Summary
 
-releash is released from version tags as signed, static binaries for Linux, macOS and Windows, a multi-architecture container image on ghcr.io, and a Homebrew cask. Every release publishes SHA-256 checksums, SBOMs and Sigstore cosign keyless signatures, so a pipeline can verify that the binary it is about to trust with deploy decisions was built by this repository's release workflow. Versions follow SemVer, starting at v0.1.0.
+releash is released from version tags as signed, static binaries for Linux, macOS and Windows, a multi-architecture container image on ghcr.io, and a Homebrew cask. Every release publishes SHA-256 checksums, SBOMs and Sigstore cosign keyless signatures, so a pipeline can verify that the binary it is about to trust with deploy decisions was built by this repository's release workflow. Versions follow SemVer, starting at v0.1.0; the first complete release is v0.1.2 (see [Versioning](#versioning)).
 
 # Motivation
 
@@ -28,7 +28,7 @@ Non-goals:
 Download a pinned release in a pipeline, verify it, and run it. Verifying needs cosign v3 or later, because releases are signed in cosign v3's Sigstore bundle format, which cosign v2 reads only with `--new-bundle-format`:
 
 ```sh
-VERSION=0.1.0
+VERSION=0.1.2
 BASE=https://github.com/ivanklee86/releash/releases/download/v${VERSION}
 
 curl -sSfLO "${BASE}/releash_${VERSION}_linux_amd64.tar.gz"
@@ -51,7 +51,7 @@ tar -xzf "releash_${VERSION}_linux_amd64.tar.gz" releash
 Or use the container image. Verify it first, then run the exact digest you verified, because a tag can move between the two commands:
 
 ```sh
-VERSION=0.1.0
+VERSION=0.1.2
 IMAGE=ghcr.io/ivanklee86/releash
 
 DIGEST=$(docker buildx imagetools inspect "${IMAGE}:${VERSION}" --format '{{json .Manifest.Digest}}' | tr -d '"')
@@ -70,7 +70,7 @@ On a workstation, install with Homebrew or Go:
 
 ```sh
 brew install ivanklee86/tap/releash
-go install github.com/ivanklee86/releash@v0.1.0
+go install github.com/ivanklee86/releash@v0.1.2
 ```
 
 `releash --version` prints the installed version.
@@ -105,7 +105,7 @@ Signing `checksums.txt` covers every file it lists, so archives and SBOMs are no
 - Repository: `ghcr.io/ivanklee86/releash`.
 - Platforms: `linux/amd64` and `linux/arm64`, published as one multi-architecture manifest.
 - Base: `gcr.io/distroless/static-debian13:nonroot`, pinned by digest in the `Dockerfile` and kept current by Renovate. It has CA certificates and runs as UID 65532. The entrypoint is `/usr/bin/releash`.
-- Tags: `<version>` (e.g. `0.1.0`) for every release, and `latest` for non-prerelease versions. There are no floating `<major>` or `<major>.<minor>` tags. Pipelines should pin a version or a digest.
+- Tags: `<version>` (e.g. `0.1.2`) for every release, and `latest` for non-prerelease versions. There are no floating `<major>` or `<major>.<minor>` tags. Pipelines should pin a version or a digest.
 - Labels: OCI `source`, `version`, `revision` and `licenses`.
 - The image is signed with cosign keyless signing, both the multi-arch index and each platform image in it. SPDX SBOMs are attached as signed attestations by an explicit `cosign attest --type spdxjson` step in the release workflow, because goreleaser's `sboms` covers only archives and `docker_signs` attaches no SBOM. Each platform image (`linux/amd64`, `linux/arm64`) carries an SBOM of its own contents, and the multi-arch index carries the `linux/amd64` SBOM, because an attestation has one subject. Users can check them with `cosign verify-attestation --type spdxjson`; to inspect the packages of an arm64 image, verify its platform digest.
 
@@ -121,7 +121,7 @@ A cask named `releash` is published to `ivanklee86/homebrew-tap` for non-prerele
 
 ## Versioning
 
-- Releases are tagged `vMAJOR.MINOR.PATCH` following [SemVer 2.0.0](https://semver.org/spec/v2.0.0.html), starting at `v0.1.0`. Prereleases use `-rc.N` (e.g. `v0.2.0-rc.1`). They are published as GitHub prereleases, do not move the `latest` image tag, and are not published to Homebrew.
+- Releases are tagged `vMAJOR.MINOR.PATCH` following [SemVer 2.0.0](https://semver.org/spec/v2.0.0.html), starting at `v0.1.0`. `v0.1.0` was tagged but never published, because its release run rebuilt the rc it shared a commit with, and `v0.1.1` was published without its cask and image SBOM attestations, so `v0.1.2` is the first complete release. Prereleases use `-rc.N` (e.g. `v0.2.0-rc.1`). They are published as GitHub prereleases, do not move the `latest` image tag, and are not published to Homebrew.
 - The public contract is: the meaning of each exit code, stdout and the exit code for inputs that are valid in the current release, command and option names and their meaning, defaults, environment variable names, and archive and image naming.
 - Before `v1.0.0`, a breaking change to the public contract bumps the minor version and is listed under a "Breaking changes" heading in the release notes (see [Release notes](#release-notes)). From `v1.0.0`, a breaking change needs a new major version.
 - Exit codes are additionally governed by [ADR 0004](../adrs/0004-exit-code-contract.md): existing codes never change meaning, in any version.
