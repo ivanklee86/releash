@@ -1,5 +1,5 @@
 ---
-status: planned  # planned | active | done | dropped
+status: active  # planned | active | done | dropped
 ---
 
 # M6: Variant variables

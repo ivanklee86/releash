@@ -36,7 +36,7 @@ Chosen option: "Always print `true` or `false`; exit 0 for answers and a distinc
 | 3 | No Unleash URL or API token (missing or empty) |
 | 4 | Invalid context value, property name or Unleash URL |
 | 5 | Duplicate context field or property |
-| 6 | Proposed, not yet in effect: `releash variant` only, the flag is disabled, so the pipeline skipped its `releash check` gate ([ADR 0007](0007-refuse-variant-of-disabled-flag.md), `proposed`). Becomes part of this table when ADR 0007 is accepted. |
+| 6 | `releash variant` only: the flag is disabled, so the pipeline skipped its `releash check` gate ([ADR 0007](0007-refuse-variant-of-disabled-flag.md)) |
 
 Codes 1 and 2 follow common CLI convention. For `releash variant`, "print a boolean" means "print the disabled variant in the requested format" ([spec 0003](../specs/0003-variant-variables.md)), and the same codes apply. Exit codes are part of the public contract: new codes may be added, but existing codes keep their meaning.
 
