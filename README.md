@@ -4,7 +4,7 @@ A small CLI to drive CI/CD changes via Unleash feature flags
 
 ## Usage
 
-releash is in early development. `releash check` accepts and validates every option and follows the output and exit code contract, but it does not talk to Unleash yet: every valid invocation prints `false`, which is already its fail-safe answer. Flag evaluation arrives in M4 (see [`docs/agents/milestones`](docs/agents/milestones)).
+releash is in early development. `releash check` evaluates a flag through the official Unleash Go SDK and prints `true` or `false`. Usage metrics and detecting the runner's address for `remoteAddress` are still to come in M4 (see [`docs/agents/milestones`](docs/agents/milestones)); until then, pass `--remote-address` for IP-based strategies.
 
 Install a pinned version. There are no releases before v0.1.0, so until then pin a commit SHA.
 
@@ -34,8 +34,18 @@ releash check <flag> [--url <url>] [--token <token>] [--timeout <duration>] [--l
                      [--properties <name>=<value>]...
 ```
 
-- Releash options: `--url` and `--token` fall back to `UNLEASH_URL` and `UNLEASH_API_TOKEN`, and an option wins over its environment variable. Prefer the environment variable for the token, because options show in process listings and CI logs. `--timeout` is a positive Go duration (default `5s`). `--loud` explains on stderr why the answer is `false`.
+- Releash options: `--url` and `--token` fall back to `UNLEASH_URL` and `UNLEASH_API_TOKEN`, and an option wins over its environment variable. Prefer the environment variable for the token, because options show in process listings and CI logs. `--timeout` is a positive Go duration (default `5s`) that bounds the whole check, including every request to Unleash. `--loud` explains on stderr why the answer is `false`.
 - Context options set the Unleash context: `--env` (default `production`), `--app-name` (default `releash`), `--user-id`, `--session-id`, `--remote-address` (an IPv4 or IPv6 address), `--current-time` (an RFC 3339 timestamp), and `--properties name=value`, repeated once per custom property. A property value may contain `=` or be empty.
+
+If Unleash is unreachable or does not answer within `--timeout`, rejects the token, sends a response releash cannot read, or does not know the flag, releash prints `false` and exits 0, so the gated step stays off without failing the pipeline. Add `--loud` to see why on stderr:
+
+```sh
+$ releash check deploy-pament --loud
+releash: flag "deploy-pament" not found; returning false
+false
+```
+
+Without `--current-time`, date constraints compare against the time of the check. releash keeps the flags it fetches in memory only and writes no files, so nothing from an earlier check can turn a gate on.
 
 `releash check` always prints exactly `true` or `false` on stdout, apart from `--help` and `--version`. Options go after `check <flag>`: `releash --loud check deploy-payments` is a bad command line (exit 2). It exits 0 for every answer, so `set -e` is safe. A mistake in the command or its configuration still prints `false`, writes an error to stderr and exits non-zero:
 

@@ -172,7 +172,7 @@ A default applies only when its option is not given, and it never counts as a du
 
 ## Unleash integration
 
-- releash uses the Unleash Client API (`/api/client/...`) with a backend token, through the official Unleash Go SDK (`github.com/Unleash/unleash-go-sdk/v5`, pinned; v5.1.0 at the time of writing). Flags are evaluated locally by the SDK, so results match Unleash's other SDKs for every strategy and constraint.
+- releash uses the Unleash Client API (`/api/client/...`) with a backend token, through the official Unleash Go SDK (`github.com/Unleash/unleash-go-sdk/v6`, pinned; v6.5.1 at the time of writing). Flags are evaluated locally by the SDK, so results match Unleash's other SDKs for every strategy and constraint.
 - `--timeout` (default `5s`) bounds the whole run: registering with Unleash, the first flag fetch, and the metrics flush. Every HTTP request the SDK makes uses a client with a timeout. The SDK's default client has none, and its synchronous register request otherwise hangs indefinitely against an unresponsive host.
 - releash evaluates the flag only after the SDK reports that its first fetch from Unleash succeeded. If that feature fetch fails first (e.g. 401, connection refused), releash falls back to `false` immediately instead of waiting for the timeout. Errors from the register and metrics requests do not affect the answer: the SDK reports them on the same error channel, so releash must tell them apart, and it reports them only under `--loud`.
 - releash keeps fetched flags in memory only. The SDK by default persists flags to a backup file in the temp directory and evaluates against it when Unleash cannot be reached. A stale backup on a shared CI runner could turn a gate on, which would break the fail-safe guarantee.

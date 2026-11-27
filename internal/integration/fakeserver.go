@@ -4,10 +4,74 @@ package integration
 
 import (
 	"errors"
+	"fmt"
+	"io"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"sync"
 	"testing"
 )
+
+// FakeUnleash describes a fake Client API for the failures the local stack
+// cannot produce on demand, such as a malformed response or a rejected
+// register request. Start serves it.
+type FakeUnleash struct {
+	// FeaturesStatus answers GET /api/client/features. Zero means 200.
+	FeaturesStatus int
+	// FeaturesBody is the body of that answer, sent as is.
+	FeaturesBody string
+	// RegisterStatus answers POST /api/client/register. Zero means 202.
+	RegisterStatus int
+}
+
+// EnabledFlagBody returns a Client API response holding one flag, name,
+// switched on for everyone.
+func EnabledFlagBody(name string) string {
+	return fmt.Sprintf(`{"version":2,"features":[{"name":%q,"enabled":true,"strategies":[{"name":"default"}]}]}`, name)
+}
+
+// Start starts the fake on the loopback address and returns its API URL,
+// with /api. Every other path, such as /api/client/metrics, answers 202. The
+// server is closed when the test finishes.
+func (f FakeUnleash) Start(t testing.TB) string {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/client/features":
+			w.WriteHeader(orDefault(f.FeaturesStatus, http.StatusOK))
+			_, _ = io.WriteString(w, f.FeaturesBody)
+		case "/api/client/register":
+			w.WriteHeader(orDefault(f.RegisterStatus, http.StatusAccepted))
+		default:
+			w.WriteHeader(http.StatusAccepted)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv.URL + "/api"
+}
+
+// UnreachableURL returns an API URL on a loopback port that nothing listens
+// on, so connecting to it is refused at once.
+func UnreachableURL(t testing.TB) string {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("finding a free port: %v", err)
+	}
+	addr := ln.Addr().String()
+	if err := ln.Close(); err != nil {
+		t.Fatalf("freeing port %s: %v", addr, err)
+	}
+	return "http://" + addr + "/api"
+}
+
+func orDefault(status, fallback int) int {
+	if status == 0 {
+		return fallback
+	}
+	return status
+}
 
 // UnresponsiveServer starts a TCP server on the loopback address that accepts
 // connections and never responds, and returns its URL (http://127.0.0.1:port).

@@ -1,0 +1,380 @@
+package releash
+
+import (
+	"bytes"
+	"errors"
+	"fmt"
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"os"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+// Cases for evaluation against fake Unleash servers, from the test plan in
+// spec 0001. The integration scenarios repeat the important ones against a
+// real Unleash.
+//   - an enabled flag is true and a disabled one false, with nothing on
+//     stderr even with --loud
+//   - the token goes in the Authorization header, and appName is the name
+//     releash registers with
+//   - each context field reaches evaluation, and so do custom properties
+//   - without currentTime, date constraints use the time of the check
+//   - fallbacks, each false with its own --loud line and nothing without it:
+//     unknown flag, 401, 403, another error status, malformed JSON, JSON of
+//     the wrong shape, unreachable server, unresponsive server (within
+//     --timeout)
+//   - a rejected register request does not change the answer and shows only
+//     under --loud
+//   - no files are written to the temp directory
+
+const testToken = "default:production.test-token"
+
+// fakeUnleash starts a server whose /api/client/features answers features
+// and whose other paths answer register, keyed by path, or 202. It returns
+// the API URL.
+func fakeUnleash(t *testing.T, features http.HandlerFunc, register http.HandlerFunc) string {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/api/client/features":
+			features(w, r)
+		case r.URL.Path == "/api/client/register" && register != nil:
+			register(w, r)
+		default:
+			w.WriteHeader(http.StatusAccepted)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv.URL + "/api"
+}
+
+// serve answers with status and body.
+func serve(status int, body string) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(status)
+		_, _ = fmt.Fprint(w, body)
+	}
+}
+
+// featuresJSON is a Client API response holding the given features.
+func featuresJSON(features ...string) string {
+	return `{"version":2,"features":[` + strings.Join(features, ",") + `]}`
+}
+
+// constrained is an enabled flag whose one strategy applies only when
+// contextName is in values.
+func constrained(name, contextName string, values ...string) string {
+	return fmt.Sprintf(`{"name":%q,"enabled":true,"strategies":[{"name":"default","constraints":[{"contextName":%q,"operator":"IN","values":[%s]}]}]}`,
+		name, contextName, quoteAll(values))
+}
+
+func quoteAll(values []string) string {
+	quoted := make([]string, len(values))
+	for i, v := range values {
+		quoted[i] = fmt.Sprintf("%q", v)
+	}
+	return strings.Join(quoted, ",")
+}
+
+const (
+	enabledFlag  = `{"name":"on","enabled":true,"strategies":[{"name":"default"}]}`
+	disabledFlag = `{"name":"off","enabled":false,"strategies":[{"name":"default"}]}`
+)
+
+// runCheck calls Check with opts against url and returns stdout, stderr and
+// the exit code.
+func runCheck(t *testing.T, url, flag string, loud bool, edits ...func(*CheckOptions)) (string, string, int) {
+	t.Helper()
+	opts := with(all(edits...))
+	opts.URL, opts.Token, opts.Flag, opts.Loud = url, testToken, flag, loud
+	var stdout, stderr bytes.Buffer
+	r := New()
+	r.Out, r.Err = &stdout, &stderr
+	code := r.Check(opts)
+	return stdout.String(), stderr.String(), code
+}
+
+func TestCheckAnswersFromUnleash(t *testing.T) {
+	url := fakeUnleash(t, serve(http.StatusOK, featuresJSON(enabledFlag, disabledFlag)), nil)
+
+	for flag, want := range map[string]string{"on": "true\n", "off": "false\n"} {
+		for _, loud := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/loud=%t", flag, loud), func(t *testing.T) {
+				stdout, stderr, code := runCheck(t, url, flag, loud)
+
+				assert.Equal(t, ExitOK, code, "exit code")
+				assert.Equal(t, want, stdout, "stdout")
+				assert.Empty(t, stderr, "stderr")
+			})
+		}
+	}
+}
+
+func TestCheckSendsTokenAndAppName(t *testing.T) {
+	var mu sync.Mutex
+	var gotToken, gotFeaturesApp, gotRegisterApp string
+	url := fakeUnleash(t,
+		func(w http.ResponseWriter, r *http.Request) {
+			mu.Lock()
+			gotToken, gotFeaturesApp = r.Header.Get("Authorization"), r.Header.Get("Unleash-Appname")
+			mu.Unlock()
+			serve(http.StatusOK, featuresJSON(enabledFlag))(w, r)
+		},
+		func(w http.ResponseWriter, r *http.Request) {
+			mu.Lock()
+			gotRegisterApp = r.Header.Get("Unleash-Appname")
+			mu.Unlock()
+			w.WriteHeader(http.StatusAccepted)
+		},
+	)
+
+	stdout, _, _ := runCheck(t, url, "on", false, set(OptionAppName, appName, "pipeline"))
+
+	assert.Equal(t, "true\n", stdout)
+	mu.Lock()
+	defer mu.Unlock()
+	assert.Equal(t, testToken, gotToken, "Authorization")
+	assert.Equal(t, "pipeline", gotFeaturesApp, "appName of the feature fetch")
+	assert.Equal(t, "pipeline", gotRegisterApp, "appName releash registers with")
+}
+
+func TestCheckEvaluatesAgainstTheContext(t *testing.T) {
+	url := fakeUnleash(t, serve(http.StatusOK, featuresJSON(
+		constrained("by-user", "userId", "alice"),
+		constrained("by-session", "sessionId", "s-1"),
+		constrained("by-environment", "environment", "staging"),
+		constrained("by-default-environment", "environment", DefaultEnvironment),
+		constrained("by-app", "appName", "pipeline"),
+		constrained("by-default-app", "appName", DefaultAppName),
+		constrained("by-region", "region", "eu"),
+		constrained("by-build", "build", "a=b"),
+		`{"name":"by-address","enabled":true,"strategies":[{"name":"remoteAddress","parameters":{"IPs":"10.1.2.3"}}]}`,
+		`{"name":"after-2099","enabled":true,"strategies":[{"name":"default","constraints":[{"contextName":"currentTime","operator":"DATE_AFTER","value":"2099-01-01T00:00:00.000Z"}]}]}`,
+	)), nil)
+
+	tests := []struct {
+		flag  string
+		match func(*CheckOptions)
+		other func(*CheckOptions)
+	}{
+		{"by-user", set(OptionUserID, func(o *CheckOptions) *string { return &o.UserID }, "alice"), set(OptionUserID, func(o *CheckOptions) *string { return &o.UserID }, "carol")},
+		{"by-session", set(OptionSessionID, func(o *CheckOptions) *string { return &o.SessionID }, "s-1"), set(OptionSessionID, func(o *CheckOptions) *string { return &o.SessionID }, "s-2")},
+		{"by-environment", set(OptionEnv, env, "staging"), set(OptionEnv, env, "qa")},
+		{"by-default-environment", func(*CheckOptions) {}, set(OptionEnv, env, "staging")},
+		{"by-app", set(OptionAppName, appName, "pipeline"), set(OptionAppName, appName, "other")},
+		{"by-default-app", func(*CheckOptions) {}, set(OptionAppName, appName, "pipeline")},
+		{"by-region", properties("region=eu"), properties("region=us")},
+		{"by-build", properties("build=a=b"), properties("build=a")},
+		{"by-address", set(OptionRemoteAddress, remoteAddress, "10.1.2.3"), set(OptionRemoteAddress, remoteAddress, "10.1.2.4")},
+		{"after-2099", set(OptionCurrentTime, currentTime, "2100-01-01T00:00:00Z"), set(OptionCurrentTime, currentTime, "2098-01-01T00:00:00+01:00")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.flag, func(t *testing.T) {
+			stdout, stderr, code := runCheck(t, url, tt.flag, true, tt.match)
+			assert.Equal(t, "true\n", stdout, "matching context")
+			assert.Empty(t, stderr)
+			assert.Equal(t, ExitOK, code)
+
+			stdout, _, _ = runCheck(t, url, tt.flag, true, tt.other)
+			assert.Equal(t, "false\n", stdout, "other context")
+		})
+	}
+}
+
+func TestCheckComparesDatesWithTheTimeOfTheCheck(t *testing.T) {
+	stamp := func(d time.Duration) string { return time.Now().Add(d).UTC().Format(time.RFC3339) }
+	dated := func(name, operator, value string) string {
+		return fmt.Sprintf(`{"name":%q,"enabled":true,"strategies":[{"name":"default","constraints":[{"contextName":"currentTime","operator":%q,"value":%q}]}]}`, name, operator, value)
+	}
+	url := fakeUnleash(t, serve(http.StatusOK, featuresJSON(
+		dated("started", "DATE_AFTER", stamp(-5*time.Minute)),
+		dated("not-started", "DATE_AFTER", stamp(5*time.Minute)),
+		dated("not-ended", "DATE_BEFORE", stamp(5*time.Minute)),
+		dated("ended", "DATE_BEFORE", stamp(-5*time.Minute)),
+	)), nil)
+
+	for flag, want := range map[string]string{"started": "true\n", "not-started": "false\n", "not-ended": "true\n", "ended": "false\n"} {
+		t.Run(flag, func(t *testing.T) {
+			stdout, _, _ := runCheck(t, url, flag, false)
+			assert.Equal(t, want, stdout)
+		})
+	}
+}
+
+func TestCheckFallsBackToFalse(t *testing.T) {
+	const malformed = "malformed"
+	tests := []struct {
+		name     string
+		features http.HandlerFunc
+		flag     string
+		wantLine string
+	}{
+		{name: "unknown flag", features: serve(http.StatusOK, featuresJSON(enabledFlag)), flag: "missing", wantLine: `releash: flag "missing" not found; returning false`},
+		{name: "401", features: serve(http.StatusUnauthorized, `{}`), wantLine: "releash: unleash rejected the API token (HTTP 401); returning false"},
+		{name: "403", features: serve(http.StatusForbidden, `{}`), wantLine: "releash: unleash rejected the API token (HTTP 403); returning false"},
+		{name: "500", features: serve(http.StatusInternalServerError, ``), wantLine: "releash: unleash answered the feature fetch with HTTP 500; returning false"},
+		{name: "404", features: serve(http.StatusNotFound, ``), wantLine: "releash: unleash answered the feature fetch with HTTP 404; returning false"},
+		{name: "invalid JSON", features: serve(http.StatusOK, `{"features": [`), wantLine: malformed},
+		{name: "JSON of the wrong shape", features: serve(http.StatusOK, `{"features": "on"}`), wantLine: malformed},
+	}
+	for _, tt := range tests {
+		flag := tt.flag
+		if flag == "" {
+			flag = "on"
+		}
+		url := fakeUnleash(t, tt.features, nil)
+		for _, loud := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/loud=%t", tt.name, loud), func(t *testing.T) {
+				start := time.Now()
+				stdout, stderr, code := runCheck(t, url, flag, loud)
+
+				assert.Equal(t, ExitOK, code, "exit code")
+				assert.Equal(t, "false\n", stdout, "stdout")
+				switch {
+				case !loud:
+					assert.Empty(t, stderr, "stderr")
+				case tt.wantLine == malformed:
+					// The rest of the line is the SDK's decode error.
+					assert.Regexp(t, `^releash: unleash sent a malformed feature response: .+; returning false\n$`, stderr, "stderr")
+				default:
+					assert.Equal(t, tt.wantLine+"\n", stderr, "stderr")
+				}
+				assert.Less(t, time.Since(start), time.Second, "falls back without waiting for the timeout")
+			})
+		}
+	}
+}
+
+func TestCheckFallsBackWhenUnleashIsUnreachable(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	addr := ln.Addr().String()
+	require.NoError(t, ln.Close())
+
+	stdout, stderr, code := runCheck(t, "http://"+addr+"/api", "on", true)
+
+	assert.Equal(t, ExitOK, code)
+	assert.Equal(t, "false\n", stdout)
+	assert.Equal(t, fmt.Sprintf("releash: unleash unreachable: dial tcp %s: connect: connection refused; returning false\n", addr), stderr)
+
+	stdout, stderr, code = runCheck(t, "http://"+addr+"/api", "on", false)
+	assert.Equal(t, ExitOK, code)
+	assert.Equal(t, "false\n", stdout)
+	assert.Empty(t, stderr)
+}
+
+func TestCheckFallsBackWithinTheTimeoutWhenUnleashNeverAnswers(t *testing.T) {
+	url := unresponsiveServer(t)
+
+	for _, loud := range []bool{false, true} {
+		t.Run(fmt.Sprintf("loud=%t", loud), func(t *testing.T) {
+			start := time.Now()
+			stdout, stderr, code := runCheck(t, url, "on", loud, set(OptionTimeout, timeout, "500ms"))
+			elapsed := time.Since(start)
+
+			assert.Equal(t, ExitOK, code)
+			assert.Equal(t, "false\n", stdout)
+			want := ""
+			if loud {
+				want = "releash: unleash did not answer within 500ms; returning false\n"
+			}
+			assert.Equal(t, want, stderr)
+			assert.GreaterOrEqual(t, elapsed, 500*time.Millisecond)
+			assert.Less(t, elapsed, 750*time.Millisecond, "the whole check, Close included, stays within --timeout")
+		})
+	}
+}
+
+func TestCheckIgnoresARejectedRegistration(t *testing.T) {
+	url := fakeUnleash(t, serve(http.StatusOK, featuresJSON(enabledFlag)), serve(http.StatusUnauthorized, ``))
+
+	stdout, stderr, code := runCheck(t, url, "on", false)
+	assert.Equal(t, ExitOK, code)
+	assert.Equal(t, "true\n", stdout)
+	assert.Empty(t, stderr)
+
+	stdout, stderr, code = runCheck(t, url, "on", true)
+	assert.Equal(t, ExitOK, code)
+	assert.Equal(t, "true\n", stdout)
+	assert.Equal(t, "releash: registering with unleash failed: HTTP 401; the answer is unaffected\n", stderr)
+}
+
+func TestCheckWritesNoFiles(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TMPDIR", tmp)
+	require.Equal(t, tmp, os.TempDir())
+	url := fakeUnleash(t, serve(http.StatusOK, featuresJSON(enabledFlag)), nil)
+
+	stdout, _, _ := runCheck(t, url, "on", false)
+
+	assert.Equal(t, "true\n", stdout)
+	entries, err := os.ReadDir(tmp)
+	require.NoError(t, err)
+	assert.Empty(t, entries, "files in the temp directory")
+}
+
+func TestOnErrorPassesOnOnlyFeatureFetchErrors(t *testing.T) {
+	urlErr := func(path string) error {
+		return &url.Error{Op: "Post", URL: "http://unleash.example.com/api" + path, Err: errors.New("connection refused")}
+	}
+	for _, tt := range []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"register transport error", urlErr("/client/register"), false},
+		{"metrics transport error", urlErr("/client/metrics"), false},
+		{"feature fetch transport error", urlErr("/client/features"), true},
+		{"decode error", errors.New("unexpected EOF"), true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			l := newSDKListener()
+			l.OnError(tt.err)
+			select {
+			case got := <-l.fetchFailed:
+				assert.True(t, tt.want, "passed on")
+				assert.Equal(t, tt.err, got)
+			default:
+				assert.False(t, tt.want, "not passed on")
+			}
+		})
+	}
+}
+
+// unresponsiveServer returns the URL of a loopback server that accepts
+// connections and never answers.
+func unresponsiveServer(t *testing.T) string {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	var mu sync.Mutex
+	var conns []net.Conn
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			mu.Lock()
+			conns = append(conns, c)
+			mu.Unlock()
+		}
+	}()
+	t.Cleanup(func() {
+		_ = ln.Close()
+		mu.Lock()
+		defer mu.Unlock()
+		for _, c := range conns {
+			_ = c.Close()
+		}
+	})
+	return "http://" + ln.Addr().String() + "/api"
+}

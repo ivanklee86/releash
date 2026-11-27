@@ -1,5 +1,5 @@
 ---
-status: planned  # planned | active | done | dropped
+status: active  # planned | active | done | dropped
 ---
 
 # M4: Unleash evaluation
@@ -16,7 +16,7 @@ Specs (in `docs/specs`) delivered by this milestone. Check each off when it is i
 
 ## Exit criteria
 
-- releash uses `github.com/Unleash/unleash-go-sdk/v5` at a pinned version through the Client API.
+- releash uses `github.com/Unleash/unleash-go-sdk/v6` at a pinned version (v6.5.1) through the Client API.
 - An enabled flag prints `true`, and a disabled flag prints `false`. Both exit 0 with nothing on stderr.
 - A constraint on a custom property (e.g. `region`) gives different results for `--properties region=eu` and `--properties region=us`, and each standard context option reaches evaluation.
 - Without `--current-time`, date constraints compare against the time of the check. Without `--remote-address`, an IP strategy listing the runner's address enables the flag, and `--remote-address` overrides it.
