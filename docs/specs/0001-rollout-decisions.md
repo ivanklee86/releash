@@ -234,7 +234,7 @@ None at this time.
 
 # Future possibilities
 
-- `releash variant <flag>` to print the variant name or payload, e.g. to choose an image tag.
+- `releash variant <flag>` to print the variant name and payload as environment variables, e.g. to choose an image tag. Proposed in [spec 0003](0003-variant-variables.md).
 - An opt-in `--exit-code` option so `releash check x && ./deploy.sh` works.
 - Checking several flags in one call, printing `KEY=VALUE` lines for `$GITHUB_OUTPUT` or dotenv files.
 - A config file (e.g. `.releash.yaml`) for the URL, app name and default context. v1 uses only options and environment variables.
