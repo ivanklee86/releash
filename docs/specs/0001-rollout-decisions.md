@@ -82,7 +82,7 @@ Each kind of mistake has its own exit code (see [Exit codes](#exit-codes)), so a
 
 ## Command
 
-```
+```text
 releash check <flag> [--url <url>] [--token <token>] [--timeout <duration>] [--loud]
                      [--env <name>] [--app-name <name>]
                      [--user-id <id>] [--session-id <id>]

@@ -2,7 +2,7 @@
 status: planned  # planned | active | done | dropped
 ---
 
-# M<N>: <Title>
+# M\<N\>: \<Title\>
 
 ## Goal
 
@@ -12,7 +12,7 @@ One or two sentences: what is true for users when this milestone is done.
 
 Specs (in `docs/specs`) delivered by this milestone. Check each off when it is implemented.
 
-- [ ] [NNNN-<topic>](../../specs/NNNN-<topic>.md)
+- [ ] [NNNN-\<topic\>](../../specs/NNNN-<topic>.md)
 
 ## Exit criteria
 
