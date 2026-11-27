@@ -4,7 +4,7 @@ How the releash repository is organised. Keep this up to date as the repository 
 
 ## Status
 
-M1 ([milestone](milestones/M1-skeleton-mvp.md), [plan](plans/2026-11-27-m1-skeleton-mvp.md)) and M2 ([milestone](milestones/M2-dev-tooling-and-testing.md), [plan](plans/2026-11-27-m2-dev-tooling-and-testing.md)) are done. M2 added the local Unleash stack, integration test scaffolding, Renovate and the full CI. releash builds and prints help and its version. It has no commands yet: `check` arrives in M3 and the Unleash SDK in M4.
+M1 ([milestone](milestones/M1-skeleton-mvp.md), [plan](plans/2026-11-27-m1-skeleton-mvp.md)) and M2 ([milestone](milestones/M2-dev-tooling-and-testing.md), [plan](plans/2026-11-27-m2-dev-tooling-and-testing.md)) are done. M2 added the local Unleash stack, integration test scaffolding, Renovate and the full CI. M3 ([milestone](milestones/M3-check-command-contract.md), [plan](plans/2026-11-27-m3-check-command.md)) is active: `releash check` validates every option and follows the output and exit code contract, and always prints `false`. The Unleash SDK and flag evaluation arrive in M4.
 
 ## Documentation layout
 
@@ -22,8 +22,8 @@ The module is `github.com/ivanklee86/releash`, laid out per [Organizing a Go mod
 
 | Path | What it holds |
 |---|---|
-| `main.go` | Cobra and viper wiring only: `NewRootCommand`, `execute`, `run`, version resolution and flag binding. Having `main` at the module root is what makes `go install github.com/ivanklee86/releash@<version>` work. |
-| `internal/releash/` | The orchestrator: `Config`, the `Releash` type built with `New` or `NewWithConfig`, and the exit code constants from [ADR 0004](../adrs/0004-exit-code-contract.md). |
+| `main.go` | Cobra and viper wiring only: `NewRootCommand`, the `check` command, `execute`, `run`, version resolution and flag binding. Having `main` at the module root is what makes `go install github.com/ivanklee86/releash@<version>` work. |
+| `internal/releash/` | The orchestrator: `Config`, the `Releash` type built with `New` or `NewWithConfig`, and the exit code constants from [ADR 0004](../adrs/0004-exit-code-contract.md) in `releash.go`; `CheckOptions`, `Releash.Check` and its validation in `check.go`. |
 | `Taskfile.yaml`, `tasks/go.yaml` | Developer and CI tasks (see [Tasks](#tasks)). |
 | `.golangci.yml` | golangci-lint config: the `standard` linter set plus the `gofmt` and `goimports` formatters, with the `integration` build tag set. |
 | `internal/integration/` | Helpers and the smoke test for the integration tests (see [Tests](#tests)). |
@@ -38,9 +38,34 @@ The module is `github.com/ivanklee86/releash`, laid out per [Organizing a Go mod
 
 ### The orchestrator pattern
 
-`main.go` maps options into a `releash.Config`, builds a `Releash`, and calls its methods. Everything the CLI does lives on `Releash`, which writes to its swappable `Out` and `Err` writers and returns an exit code instead of calling `os.Exit`. `main` is the only place that calls `os.Exit`, so tests drive the CLI by calling `execute(args, stdout, stderr, version)` and asserting on the buffers and the returned code.
+`main.go` maps options into a `releash.Config` or `releash.CheckOptions`, builds a `Releash`, and calls its methods. Everything the CLI does lives on `Releash`, which writes to its swappable `Out` and `Err` writers and returns an exit code instead of calling `os.Exit`. `main` is the only place that calls `os.Exit`, so tests drive the CLI by calling `execute(args, stdout, stderr, version)` and asserting on the buffers and the returned code.
 
-`run` is the one place that maps outcomes to exit codes. It turns every error cobra returns into exit 2, because in M1 all of them come from parsing the command line, and it recovers a panic in a command, reports it on stderr and exits 1, as ADR 0004 requires, instead of Go's default exit 2. Cobra's own error and usage printing is silenced, because cobra would print usage to stdout and stdout must stay empty on errors.
+`run(root, args, stdout, stderr)` is the one place that maps outcomes to exit codes. It runs the root command with `ExecuteC`, so it knows which command an error came from:
+
+- A command that has already reported its problems returns an `exitCodeError` carrying its exit code, and `run` returns that code without printing anything more. `check` does this for exit codes 2 to 5.
+- Every other error comes from cobra parsing the command line and exits 2. For a command with the `releash_answer` annotation (only `check`), `run` writes `releash: <error>` and `Run 'releash check --help' for usage.` to stderr and `false` to stdout. For bare `releash` and unknown commands it keeps the M1 behaviour: `Error: <error>` and a pointer at `releash --help`, with stdout empty.
+- A panic in a command is recovered, reported on stderr and exits 1, as ADR 0004 requires, instead of Go's default exit 2. `ExecuteC` never returns in that case, so `run` finds the command with `root.Find(args)`, the lookup `ExecuteC` itself uses, and prints `false` on stdout if it is `check`.
+
+Cobra's own error and usage printing is silenced, because cobra would print usage to stdout, which on errors must hold nothing but the answer.
+
+### The check command
+
+`releash check <flag>` is defined in `newCheckCommand` in `main.go` and does its work in `Releash.Check` in `internal/releash/check.go`. In M3 it validates every option from spec 0001 and always prints `false`; M4 adds evaluation.
+
+`main.go` only maps the command line to `CheckOptions`: the flag name, the raw option values, and `Given`, which counts how many times each option was set. pflag keeps only the last value of a repeated option, so every flag except `--properties` has its `pflag.Value` wrapped in a `countedValue` that counts `Set` calls. Defaults are never set through `Set`, so a default never counts as given, and `bindFlags` sets `--url` or `--token` from the environment only when the option was not given, so the environment never makes a repeat. `--properties` is a `StringArray` flag, so a value containing a comma is not split, and its repeats are checked by property name instead. `checkArgs` turns a missing or extra argument into a short error, which `run` maps to exit 2.
+
+The option names, the two option groups (`ReleashOptions`, `ContextOptions`) and the defaults (`DefaultTimeout`, `DefaultEnvironment`, `DefaultAppName`) are exported from `internal/releash`, so help, duplicate detection and validation share one list. `checkUsage` writes the spec 0001 synopsis, then "Releash options", "Context options" and "Other options" (`--help`) as separate headed sections in that order. Placeholder names in help, such as `--url url`, come from backquoted words in each flag's usage string.
+
+`Check` collects every problem in `CheckOptions`, writes each as a line starting with `releash:` to `Err` with or without `--loud`, and returns the lowest code among them, so the exit code does not depend on validation order. It always writes exactly `false\n` to `Out`. On exit 2 it adds `Run 'releash check --help' for usage.`. A valid invocation exits 0, and with `--loud` writes the one temporary line `releash: evaluation is not implemented yet (M4); returning false`, which M4 removes. The checks are:
+
+| Exit | Problem |
+|---|---|
+| 2 | Empty flag name; a releash option (`--url`, `--token`, `--timeout`, `--loud`) given more than once; a `--timeout` that is not a positive Go duration. Missing or extra arguments, unknown options and malformed option syntax are cobra's errors and also exit 2. |
+| 3 | Empty URL or token, whether unset, empty in the environment or given as an empty option. |
+| 4 | A URL that is not an absolute `http` or `https` URL with a host; a `--current-time` that `time.RFC3339Nano` cannot parse; a `--remote-address` that `netip.ParseAddr` rejects or that has a zone; an empty `--env` or `--app-name`; a property without `=`, with an empty name, or named after a standard field, with a hint naming the option to use. |
+| 5 | A context option other than `--properties` given more than once; the same property name given more than once. |
+
+Values are validated only for options that were given: `--env`, `--app-name` and `--timeout` otherwise take their defaults, and `--user-id`, `--session-id`, `--remote-address` and `--current-time` stay unset. `--user-id` and `--session-id` accept any value, including an empty one. A property is split on its first `=`, so its value may contain `=` or be empty. The validated values end up in an unexported `checkRequest` for M4 to evaluate.
 
 ### Versions
 
@@ -196,11 +221,14 @@ releash has two kinds of test. Unit tests are plain `_test.go` files and need ne
 
 | Path | What it holds |
 |---|---|
+| `main_test.go` | Unit tests of the root command (the M1 contract), `run`'s panic handling, version resolution and `bindFlags`. |
+| `check_test.go` | Unit tests of `releash check` through `execute`: environment fallback and option precedence for `--url` and `--token`, cobra's parse errors, every exit code, precedence, `--loud`, the help groups and their order, and a panic during `check`. Each case asserts the exact stdout, stderr and exit code, and error cases also run with `--loud` added to show it changes nothing. They set or unset `UNLEASH_URL` and `UNLEASH_API_TOKEN` per test with `t.Setenv`, so a shell that exports them does not affect the results. |
+| `internal/releash/check_test.go` | Unit tests of `Releash.Check` and its validation: every exit code case from the milestone, with and without `--loud`, precedence, defaults, and the values `validateCheck` hands on, such as property values containing `=`. |
 | `internal/integration/` | Helpers for the integration tests, plus the smoke test and a test of the fake server. Every file carries the build tag. |
 | `internal/releash/scenarios_integration_test.go` | Release scenarios from spec 0001 that drive a `Releash` built with `NewWithConfig`, with buffers for `Out` and `Err`, and assert stdout, stderr and the exit code. |
-| `main_integration_test.go` | A few pipeline scenarios that go through the root command, to check that options and environment variables reach the config. They have to be in package `main`. |
+| `main_integration_test.go` | A few pipeline scenarios that go through the root command, to check that options and environment variables reach evaluation. They have to be in package `main`. |
 
-Scenarios are named after how a pipeline uses releash, e.g. `TestDeployGateStaysClosedWhenTokenIsRejected` or `TestRegionGatedRolloutOpensOnlyForEU`. In M2 they are stubs that skip with a message naming the milestone that fills them in (M3 for the command contract, M4 for evaluation) and what the test will assert. There is no stub for a flag in a project the token cannot see, because open-source Unleash has only the `default` project; the unknown-flag scenario covers it. Scenarios that need a flag the fixtures cannot hold, such as date constraints a few minutes either side of the check or constraints on `environment` and `appName`, will create it through the Admin API with `AdminToken`. Such a flag's name must start with `ScenarioFlagPrefix` (`scenario-`), and the scenario must archive it in `t.Cleanup`. The smoke test ignores flags with that prefix, so it still passes while scenarios run in parallel with it.
+Scenarios are named after how a pipeline uses releash, e.g. `TestDeployGateStaysClosedWhenTokenIsRejected` or `TestRegionGatedRolloutOpensOnlyForEU`. The remaining ones are stubs that skip with a message naming M4, which fills them in, and what the test will assert. The M3 stubs for the command contract became the unit tests in `check_test.go`, because they need no stack. There is no stub for a flag in a project the token cannot see, because open-source Unleash has only the `default` project; the unknown-flag scenario covers it. Scenarios that need a flag the fixtures cannot hold, such as date constraints a few minutes either side of the check or constraints on `environment` and `appName`, will create it through the Admin API with `AdminToken`. Such a flag's name must start with `ScenarioFlagPrefix` (`scenario-`), and the scenario must archive it in `t.Cleanup`. The smoke test ignores flags with that prefix, so it still passes while scenarios run in parallel with it.
 
 The helpers in `internal/integration`:
 

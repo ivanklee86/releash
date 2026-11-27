@@ -6,7 +6,9 @@ package releash_test
 // Each drives a Releash built with NewWithConfig against the local stack
 // (task services), with buffers for Out and Err, and asserts stdout, stderr
 // and the exit code. The fixture flags they name are in unleash/fixtures.json,
-// and the helpers are in internal/integration. M3 and M4 fill them in.
+// and the helpers are in internal/integration. M4 fills them in. A panic
+// during check needs no stack and is a unit test in the root package
+// (TestPanicDuringCheckStillPrintsFalse).
 
 import "testing"
 
@@ -93,8 +95,4 @@ func TestUsageMetricsAreSentBeforeExit(t *testing.T) {
 
 func TestFailingMetricsEndpointDoesNotDelayTheGate(t *testing.T) {
 	t.Skip("M4: a failing or hanging metrics endpoint changes neither stdout nor the exit code, and exit stays within --timeout")
-}
-
-func TestPanicDuringCheckStillPrintsFalse(t *testing.T) {
-	t.Skip("M3: a panic on releash's own goroutine during check prints false, writes the error to stderr without --loud, and exits 1")
 }

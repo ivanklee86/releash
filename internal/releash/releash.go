@@ -1,6 +1,6 @@
 // Package releash holds the logic behind the releash CLI. The cobra wiring in
-// package main maps options into a Config and calls a Releash; everything the
-// CLI does lives here so tests can drive it without a process.
+// package main maps options into a Config or CheckOptions and calls a Releash;
+// everything the CLI does lives here so tests can drive it without a process.
 package releash
 
 import (
@@ -15,18 +15,26 @@ const (
 	ExitOK = 0
 	// ExitInternal means an unexpected internal error.
 	ExitInternal = 1
-	// ExitUsage means a bad command line, such as an unknown command or option.
+	// ExitUsage means a bad command line: an unknown command or option, a
+	// missing or extra argument, an invalid --timeout or a repeated releash
+	// option.
 	ExitUsage = 2
+	// ExitNotConfigured means no Unleash URL or API token, or an empty one.
+	ExitNotConfigured = 3
+	// ExitInvalid means an invalid context value, property name or Unleash URL.
+	ExitInvalid = 4
+	// ExitDuplicate means a context field or property was set more than once.
+	ExitDuplicate = 5
 )
 
-// Config holds the settings that the CLI maps from options and environment
-// variables. It has no fields until the check command arrives.
+// Config holds settings shared by every releash command. It has no fields
+// yet: Check takes its settings per call in CheckOptions.
 type Config struct{}
 
 // Releash holds the configuration and output writers that releash commands
-// run with. Commands, starting with check in M3, are methods that write to Out
-// and Err and return an exit code instead of calling os.Exit. A Releash is not
-// safe for concurrent use.
+// run with. Commands, such as Check, are methods that write to Out and Err and
+// return an exit code instead of calling os.Exit. A Releash is not safe for
+// concurrent use.
 type Releash struct {
 	*Config
 
