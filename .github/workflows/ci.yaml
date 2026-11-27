@@ -45,6 +45,8 @@ jobs:
       run: task go:lint
     - name: Compile code
       run: task go:build
+    - name: Check that go.mod and go.sum are tidy
+      run: go mod tidy -diff
 
   test:
     runs-on: ubuntu-26.04
@@ -66,8 +68,8 @@ jobs:
   pre-commit:
     runs-on: ubuntu-26.04
     env:
-      # The lint job already runs these with golangci-lint and Go from tasks/go.yaml, and the
-      # hooks are `language: system`, so they would need both installed here too.
+      # The lint job runs the same checks (golangci-lint fmt and run, go mod tidy -diff), and these
+      # hooks are `language: system`, so they would need Go and golangci-lint installed here too.
       SKIP: golangci-lint-fmt,golangci-lint,go-mod-tidy
     steps:
     - name: Checkout code
@@ -84,7 +86,7 @@ jobs:
       contents: read
       checks: write         # publish-unit-test-result-action's check run
       pull-requests: write  # its PR comment, and octocov's
-      actions: write        # octocov's artifact:// datastore
+      actions: write        # octocov's artifact:// datastore, and deleting earlier runs' report pages
     steps:
     - name: Checkout code
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -113,16 +115,20 @@ jobs:
       if: failure()
       run: docker compose logs --no-color --timestamps
     - name: Publish test results
-      # SHA-pinned, like octocov below: this step runs with checks and pull-requests write.
+      # SHA-pinned, like octocov below: this step runs with checks and pull-requests write. It runs
+      # after a test failure, but not on a cancelled run or before report.xml exists. Pull requests
+      # from forks get a read-only token whatever the job asks for, so reporting is skipped there.
       uses: EnricoMi/publish-unit-test-result-action@da5b7be67623cd59bbbd1a0ce4f022050a55605f # v2.26.0
-      if: always()
+      if: ${{ !cancelled() && hashFiles('report.xml') != '' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository) }}
       with:
         files: report.xml
         check_name: Test Results
     - name: Report coverage via octocov
       # Only after tests pass (no `if: always()`), so a failed run never becomes the baseline that
-      # other PRs diff against. SHA-pinned: this step runs with actions write.
+      # other PRs diff against. Skipped on fork pull requests, like the step above. SHA-pinned: this
+      # step runs with actions write, which octocov needs to delete the report pages of earlier runs.
       uses: k1LoW/octocov-action@a167dc0dee441b7ffc45e1b862ab55ec0d87f278 # v1.5.2
+      if: ${{ github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository }}
       with:
         config: .octocov.yml
         version: v0.83.5 # github-releases/k1LoW/octocov
