@@ -99,7 +99,7 @@ The grouping is for readability only. Options from both groups may appear in any
 
 ## Output and exit codes
 
-For every exit that releash controls, stdout contains exactly `true\n` or `false\n` and nothing else, whatever the exit code. The exit code says whether that value is an answer: 0 means it is, and anything else means the command or its configuration is wrong and the value is `false`.
+This contract covers `releash check`. Other invocations, such as bare `releash` or an unknown command, print help or an error and are not meant for use in scripts. For every exit of `releash check` that releash controls, stdout contains exactly `true\n` or `false\n` and nothing else, whatever the exit code. The exit code says whether that value is an answer: 0 means it is, and anything else means the command or its configuration is wrong and the value is `false`.
 
 Two exceptions apply. `--help` and `--version` are informational: they print help or the version to stdout and exit 0 without evaluating anything, and pipelines should not combine them with a check. A crash that releash cannot recover from (see below) may exit with empty stdout.
 
@@ -115,6 +115,8 @@ Two exceptions apply. `--help` and `--version` are informational: they print hel
 | 5 | The same context field or property set more than once | `false` | error message |
 
 Exit codes 1–5 always write their error to stderr, with or without `--loud`. `--loud` only adds stderr output and never changes stdout or the exit code.
+
+When one invocation has several mistakes, the lowest non-zero code among them wins (2 before 3, 3 before 4, 4 before 5), so the code does not depend on the order validation runs in.
 
 Exit codes are part of the public contract. New codes may be added for new kinds of error, but existing codes keep their meaning.
 
@@ -136,7 +138,7 @@ These are conditions of the environment at the moment of the check, not mistakes
 These are mistakes in how releash is called, so they exit non-zero (see [Exit codes](#exit-codes)) and still print `false`:
 
 - Exit 2: missing flag name, extra arguments, unknown options, a `--timeout` that is not a positive Go duration (e.g. `abc`, `0`, `-1s`), or a releash option (`--url`, `--token`, `--timeout`, `--loud`) given twice.
-- Exit 3: no Unleash URL or no API token, from either options or environment variables. A URL or token set to the empty string, e.g. `UNLEASH_API_TOKEN=` from an unset CI secret, counts as missing. Pipelines where the token is intentionally absent, such as pull requests from forks, should skip the call themselves, e.g. `[ -n "$UNLEASH_API_TOKEN" ] && ...`. When the output is read with `if [ "$(releash check x)" = "true" ]`, the exit code is ignored and the step is simply skipped.
+- Exit 3: no Unleash URL or no API token, from either options or environment variables. A URL or token set to the empty string, e.g. `UNLEASH_API_TOKEN=` from an unset CI secret, counts as missing. Pipelines where the token is intentionally absent, such as pull requests from forks, should skip the call themselves, e.g. `[ -n "${UNLEASH_API_TOKEN:-}" ] && ...`, which also works under `set -u`. When the output is read with `if [ "$(releash check x)" = "true" ]`, the exit code is ignored and the step is simply skipped.
 - Exit 4: an invalid context value or property name (see below), or an Unleash URL that is not an absolute `http` or `https` URL.
 - Exit 5: a context option given twice, or the same property name given twice to `--properties`.
 
@@ -172,7 +174,7 @@ A default applies only when its option is not given, and it never counts as a du
 
 - releash uses the Unleash Client API (`/api/client/...`) with a backend token, through the official Unleash Go SDK (`github.com/Unleash/unleash-go-sdk/v5`, pinned; v5.1.0 at the time of writing). Flags are evaluated locally by the SDK, so results match Unleash's other SDKs for every strategy and constraint.
 - `--timeout` (default `5s`) bounds the whole run: registering with Unleash, the first flag fetch, and the metrics flush. Every HTTP request the SDK makes uses a client with a timeout. The SDK's default client has none, and its synchronous register request otherwise hangs indefinitely against an unresponsive host.
-- releash evaluates the flag only after the SDK reports that its first fetch from Unleash succeeded. If the SDK reports an error first (e.g. 401, connection refused), releash falls back to `false` immediately instead of waiting for the timeout.
+- releash evaluates the flag only after the SDK reports that its first fetch from Unleash succeeded. If that feature fetch fails first (e.g. 401, connection refused), releash falls back to `false` immediately instead of waiting for the timeout. Errors from the register and metrics requests do not affect the answer: the SDK reports them on the same error channel, so releash must tell them apart, and it reports them only under `--loud`.
 - releash keeps fetched flags in memory only. The SDK by default persists flags to a backup file in the temp directory and evaluates against it when Unleash cannot be reached. A stale backup on a shared CI runner could turn a gate on, which would break the fail-safe guarantee.
 - The SDK does not report unknown flags; it evaluates them as disabled. releash checks the fetched flag list itself so that `--loud` can say the flag was not found.
 - Usage metrics: releash reports the evaluation to Unleash like any other client, so the flag's usage data in Unleash shows pipeline checks. The SDK only sends metrics on its metrics interval and does not flush them on `Close`, so releash sets a short interval and waits for the SDK to confirm the send before exiting. Flushing is best-effort, bounded by `--timeout`, and never changes stdout or the exit code. A failed flush is reported with `--loud`.
@@ -195,6 +197,8 @@ Options take precedence over environment variables. Prefer the environment varia
 - Fallback: an unreachable server, an unresponsive server (one that accepts connections but never responds), HTTP 401/403, an unknown flag and a malformed response each print `false`, exit 0, are silent without `--loud`, and finish within `--timeout`.
 - No stale state: after a successful check, a second check with a bad token or an unreachable server prints `false`, and releash writes no files.
 - `--loud`: each fallback reason produces its own stderr line; stdout and the exit code are the same with and without `--loud`.
+- Precedence: a missing token combined with an invalid `--current-time` exits 3, and an invalid `--timeout` combined with a missing token exits 2.
+- Register errors: a server that rejects the register request but serves features still gives the evaluated answer, and the register error appears only under `--loud`.
 - Command and configuration errors: an unknown option and a missing flag name exit 2; missing URL and missing token each exit 3; an invalid `--timeout` and a repeated releash option exit 2; an empty URL or token exits 3; a malformed `--url`, an invalid `--current-time` or `--remote-address`, an empty `--env` or `--app-name`, a property without `=`, an empty property name and a property named after a standard field (with the hint) exit 4; a context option given twice and a repeated property name exit 5. Each prints `false` on stdout and an error on stderr, without needing `--loud`.
 - Internal errors: a panic on releash's own goroutine prints `false` and exits 1.
 - Metrics: a successful check sends usage metrics for the flag before exit; a metrics endpoint that fails or hangs does not change stdout or the exit code, and does not delay exit past `--timeout`.

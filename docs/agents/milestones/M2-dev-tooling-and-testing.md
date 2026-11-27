@@ -29,7 +29,7 @@ Specs (in `docs/specs`) delivered by this milestone. Check each off when it is i
   - a flag targeted by IP address, covering the runner's address and the Docker network
   - a flag enabled in `development` and disabled in `production`, to show that the token picks the environment
   - a flag the client tokens cannot see, in a second project. Open-source Unleash may support only the `default` project, so check this against the pinned image first. If it can't be done, drop the fixture and the matching test, and note in spec 0001 that this fallback is covered only by the unknown-flag case.
-- `docker compose up --wait` exits 0 only once Unleash is healthy and the seed has finished.
+- `task services` exits 0 only once Unleash is healthy and the seed has completed successfully. `docker compose up --wait` treats an exited one-shot service as a failure and does not wait for it to finish, so the task waits on a service that `depends_on` the seed with `condition: service_completed_successfully` (or runs the seed with `docker compose run`). Check this against the pinned Compose version.
 
 ### Tasks
 

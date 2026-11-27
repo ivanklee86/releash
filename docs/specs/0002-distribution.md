@@ -122,10 +122,10 @@ A cask named `releash` is published to `ivanklee86/homebrew-tap` for non-prerele
 ## Versioning
 
 - Releases are tagged `vMAJOR.MINOR.PATCH` following [SemVer 2.0.0](https://semver.org/spec/v2.0.0.html), starting at `v0.1.0`. Prereleases use `-rc.N` (e.g. `v0.2.0-rc.1`). They are published as GitHub prereleases, do not move the `latest` image tag, and are not published to Homebrew.
-- The public contract is: stdout and the exit code for every input, command and option names and their meaning, defaults, environment variable names, and archive and image naming.
+- The public contract is: the meaning of each exit code, stdout and the exit code for inputs that are valid in the current release, command and option names and their meaning, defaults, environment variable names, and archive and image naming.
 - Before `v1.0.0`, a breaking change to the public contract bumps the minor version and is listed under a "Breaking changes" heading in the release notes (see [Release notes](#release-notes)). From `v1.0.0`, a breaking change needs a new major version.
 - Exit codes are additionally governed by [ADR 0004](../adrs/0004-exit-code-contract.md): existing codes never change meaning, in any version.
-- New options, new exit codes for new kinds of error, and additional stderr output are not breaking. stderr wording is not part of the contract.
+- New options, new exit codes for new kinds of error, and additional stderr output are not breaking. Rejecting an input that the current release accepts is breaking. stderr wording is not part of the contract.
 
 ## Release notes
 
@@ -155,7 +155,7 @@ A pull request that changes the public contract must carry `breaking-change`. Pu
 - On every pull request, CI runs `goreleaser release --snapshot --clean`, which builds every archive, SBOM and both image platforms without publishing or signing.
 - CI smoke-tests the linux/amd64 binary and both image platforms with `--version`, and checks that the reported version matches the snapshot version.
 - CI builds the Windows and macOS binaries but does not run them. Their correctness relies on Go's cross-compilation and the platform-independent test suite.
-- A snapshot release does not call GitHub's release-notes API, so it cannot validate `.github/release.yml`. CI instead calls `gh api repos/ivanklee86/releash/releases/generate-notes` for an unpublished tag name on the pull request's commit, which renders the notes with the current config without creating a release, and fails if the call fails or the configured categories are missing.
+- A snapshot release does not call GitHub's release-notes API, so it cannot validate `.github/release.yml`. CI checks the file statically instead: it must parse as YAML and define the categories and labels listed under [Release notes](#release-notes). CI does not call the release-notes API, because that needs `contents: write`, which pull requests from forks don't get, and because the generated notes leave out categories with no matching pull requests.
 - After publishing, the release workflow downloads `checksums.txt` and its bundle, and runs `cosign verify-blob`, `cosign verify` and `cosign verify-attestation --type spdxjson` with the identities documented above. A failure marks the workflow run as failed, so a release users cannot verify is noticed right away.
 
 # Drawbacks

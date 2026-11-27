@@ -71,7 +71,7 @@ Check for newer releases at the start of each PR, and use them if they are avail
 - Behaviour:
   - `releash` and `releash --help` print help to stdout and exit 0.
   - `releash --version` prints the injected `version` if set. Otherwise it prints the main module version from `runtime/debug.ReadBuildInfo` when that is not empty or `(devel)`, and otherwise `dev`. It exits 0.
-  - An unknown command or option prints an error to stderr and exits 2.
+  - An unknown command or option prints an error to stderr, leaves stdout empty, and exits 2. The `true`/`false` stdout contract covers only `releash check` (spec 0001).
 - Tests, written first as a list in the PR description, then as code: no arguments; `--help`; `--version` with an injected value, with only build info, and with neither (make the build-info lookup a variable or parameter the test can replace); unknown command; unknown option. Each asserts stdout, stderr and the exit code.
 - Checks: `go build ./...`, `go vet ./...`, `go test ./...`, `gofmt -l .` is empty.
 - Milestone criteria: module layout, cobra and viper, help, version, exit 2, `go build` and `go test`.

@@ -20,7 +20,7 @@ Specs (in `docs/specs`) delivered by this milestone. Check each off when it is i
 - Pushing a `v*` tag publishes the GitHub release, the image to ghcr.io and the Homebrew cask, signed with cosign keyless signing.
 - The image's SPDX SBOM is attached as a signed attestation by a `cosign attest` step.
 - The release workflow verifies its own published signatures and the image SBOM attestation, and fails if any of them don't verify.
-- CI validates `.github/release.yml` through GitHub's release-notes API on every pull request.
+- CI checks on every pull request that `.github/release.yml` parses and defines the categories and labels in spec 0002.
 - The release image base is pinned by digest.
 - CD follows argonap: `.github/workflows/release.yaml` runs on `v*` tags with only the permissions it needs (`contents`, `packages`, and `id-token` for signing), sets up QEMU and Buildx for the arm64 image, and runs a SHA-pinned `goreleaser-action` at a pinned goreleaser version.
 - `ci.yaml` gains argonap's `release-check` job: a snapshot release on every pull request, with the linux/amd64 binary and both image platforms smoke-tested with `--version`, so release breakage is caught before a tag exists.

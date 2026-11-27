@@ -39,7 +39,7 @@ Chosen option: "Always print `true` or `false`; exit 0 for answers and a distinc
 
 Codes 1 and 2 follow common CLI convention. Exit codes are part of the public contract: new codes may be added, but existing codes keep their meaning.
 
-Use standard exit codes where possible. A new kind of error first reuses a code whose conventional meaning fits, such as 1 for a general failure or 2 for misuse of the command line. Only then does it get a new code, the next free one above 5. Codes reserved by shells and common tools are never used for releash errors: 126 and 127 (command not executable or not found), 128 and above (killed by a signal), and 124 (timed out, as used by `timeout(1)`). The BSD `sysexits.h` codes (64–78) were considered and not adopted, because few CI tools recognise them and the small range 0–5 is easier to remember.
+Use standard exit codes where possible. A new kind of error reuses an existing code only when it fits that code's documented meaning above exactly, e.g. a new kind of bad command line uses 2. Exit 1 stays reserved for internal errors and is never reused for user mistakes. Otherwise a new kind of error gets the next free code above 5. Codes reserved by shells and common tools are never used for releash errors: 126 and 127 (command not executable or not found), 128 and above (killed by a signal), and 124 (timed out, as used by `timeout(1)`). The BSD `sysexits.h` codes (64–78) were considered and not adopted, because few CI tools recognise them and the small range 0–5 is easier to remember.
 
 ### Consequences
 

@@ -19,9 +19,8 @@ Write the first specification(s) for releash, enough to define a first milestone
 - The core decision is a boolean gate. `releash check <flag>` prints `true` or `false` on stdout for use in shell scripts, and exits 0 for both.
 - Failure is fail-safe: if releash cannot get an answer (Unleash unreachable, bad token, unknown flag), it prints `false`. `--loud` prints the details of why to stderr.
 - The evaluation context is built from one option per standard Unleash context field plus a repeatable `--properties name=value` for custom properties (superseding the original `--context` dot-notation design; see below). Required fields such as `appName` get sensible defaults.
-- Context keys Unleash cannot represent (e.g. `properties.region.zone`) are rejected as usage errors.
 - `--loud` only adds stderr output and never changes the exit code.
-- Decided 2026-11-27: stdout is always `true` or `false`. Exit 0 means the value is an answer (evaluated or a runtime fallback). Exit 2 means the command is wrong (usage error) and stdout is `false`. Spec 0001 still needs updating to match.
+- Decided 2026-11-27: stdout of `releash check` is always `true` or `false`. Exit 0 means the value is an answer (evaluated or a runtime fallback). A non-zero exit means the command or its configuration is wrong, and stdout is `false`. The codes are listed below and in ADR 0004.
 
 ## Decisions from 2026-11-27
 
