@@ -120,9 +120,9 @@ Run `task` with no arguments to format, lint, build and test. The tasks in `task
 
 | Service | Image | What it does |
 |---|---|---|
-| `db` | `postgres:19.0-alpine` | Unleash's database, stored in the `db-data` volume. Unleash 8 needs Postgres 15 or later, and Unleash's own CI tests against the latest Postgres image. |
+| `db` | `postgres:18.7-alpine` | Unleash's database, stored in the `db-data` volume mounted at `/var/lib/postgresql`, the parent directory that Postgres 18 and later images expect (the data itself lives in `/var/lib/postgresql/18/docker`). Unleash 8 needs Postgres 15 or later. |
 | `unleash` | `unleashorg/unleash-server:8.3.1` | The open-source server on `localhost:4242`. It is healthy once `GET /health` succeeds. Version checks and telemetry are off. |
-| `seed` | `python:3.15.2-alpine` | Runs `unleash/seed.py` once Unleash is healthy, then exits. |
+| `seed` | `python:3.15.2-alpine` | Runs `unleash/seed.py` once Unleash is healthy, then exits. It reaches the server through `UNLEASH_SERVER_URL=http://unleash:4242`, the server root, because the seed calls `/api/admin/...` paths. |
 | `ready` | `python:3.15.2-alpine` | Sleeps. It starts only after `seed` has exited 0, so waiting on it waits for the seed. |
 
 `docker compose up --wait` counts a service that has exited as failed, even with exit code 0, so `task services` runs `docker compose up --detach --wait ready` instead of waiting on `seed` itself. If the seed fails, `up` fails with `service "seed" didn't complete successfully` and exits 1. Running `up` on a running stack starts `seed` again, which is harmless because the seed is idempotent.
@@ -141,7 +141,7 @@ A client token sees one environment's configuration of the flags in the `default
 
 ### Fixture flags
 
-`unleash/fixtures.json` lists the flags, and the custom context field `region` (legal values `eu` and `us`). `unleash/seed.py` reconciles Unleash with it through the Admin API: it creates missing flags, replaces an environment's strategies when they differ from the fixture, and turns environments on or off to match. Anything that already matches is left alone, so running it again changes nothing and prints `unchanged` for every flag. It uses only the Python standard library. Every flag is in the `default` project and has the same strategies in both environments.
+`unleash/fixtures.json` lists the flags, and the custom context field `region` (legal values `eu` and `us`). `unleash/seed.py` reconciles Unleash with it through the Admin API: it creates missing flags, replaces an environment's strategies when they differ from the fixture, and turns environments on or off to match. Strategies are compared on their name, parameters, constraints, `disabled` flag, segments and variants, with Unleash's defaults filled in for fields the fixture leaves out. A fixture flag that someone archived cannot be created again under the same name (Unleash 8.3.1 answers 409 with `An archived flag with that name already exists`), so the seed revives it with `POST /api/admin/archive/revive/{name}`, prints `revived`, and reconciles it like any other flag; Unleash revives a flag turned off in every environment, so the seed turns the fixture's environments back on. Anything that already matches is left alone, so running it again changes nothing and prints `unchanged` for every flag. It uses only the Python standard library. Every flag is in the `default` project and has the same strategies in both environments.
 
 | Flag | Strategy | `development` | `production` | Expected result |
 |---|---|---|---|---|
@@ -168,6 +168,10 @@ The seed calls the Admin API of the pinned server version. When upgrading the Un
 |---|---|
 | `services` | Starts the stack and exits 0 once Unleash is healthy and the seed has succeeded. Safe to run on a running stack. |
 | `services:down` | Stops the stack and removes its containers, network and the `db-data` volume, so the next `services` starts from an empty database. |
-| `releash` | Builds `bin/releash` and runs it with `UNLEASH_URL=http://localhost:4242` and the production client token set, passing the arguments after `--`, e.g. `task releash -- check enabled-everywhere --loud`. Task reports a non-zero exit from releash as its own exit code 201; use `task -x releash -- <args>` to get releash's exit code. |
+| `releash` | Builds `bin/releash` and runs it with `UNLEASH_URL=http://localhost:4242/api` and the production client token set, passing the arguments after `--`, e.g. `task releash -- check enabled-everywhere --loud`. Task reports a non-zero exit from releash as its own exit code 201; use `task -x releash -- <args>` to get releash's exit code. |
 
 To run `bin/releash` directly, load `.env.example` into the shell with `set -a; . ./.env.example; set +a`.
+
+`UNLEASH_URL` is releash's setting and, as in spec 0001, is the Unleash API URL including `/api` (`http://localhost:4242/api`). `UNLEASH_SERVER_URL` is the seed's own setting and is the server root without `/api`. The two are kept apart so neither is mistaken for the other.
+
+There is no `deploy-payments` fixture. The specs and milestones use that name as an illustration; against the local stack, use a flag from the fixture table, such as `enabled-everywhere`.

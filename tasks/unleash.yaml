@@ -3,7 +3,7 @@
 version: '3'
 
 vars:
-  UNLEASH_URL: http://localhost:4242
+  UNLEASH_URL: http://localhost:4242/api
   # Fixed dev-only token from docker-compose.yaml; not a secret.
   UNLEASH_PRODUCTION_TOKEN: default:production.releash-dev-not-a-secret
 

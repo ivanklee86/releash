@@ -4,8 +4,9 @@ The seed reconciles: it creates what is missing and replaces what differs from t
 anything already matching untouched, so it can run any number of times. It uses only the standard library and
 the Admin API of the Unleash version pinned in docker-compose.yaml.
 
-Environment: UNLEASH_URL (default http://localhost:4242), UNLEASH_ADMIN_TOKEN (default the compose admin token)
-and FIXTURES (default fixtures.json next to this script). It exits 1 on any API error.
+Environment: UNLEASH_SERVER_URL, the server root without /api (default http://localhost:4242), UNLEASH_ADMIN_TOKEN
+(default the compose admin token) and FIXTURES (default fixtures.json next to this script). It exits 1 on any API
+error.
 """
 
 import json
@@ -16,13 +17,18 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-URL = os.environ.get("UNLEASH_URL", "http://localhost:4242").rstrip("/")
+URL = os.environ.get("UNLEASH_SERVER_URL", "http://localhost:4242").rstrip("/")
 TOKEN = os.environ.get("UNLEASH_ADMIN_TOKEN", "*:*.releash-dev-admin-not-a-secret")
 FIXTURES = pathlib.Path(os.environ.get("FIXTURES", pathlib.Path(__file__).with_name("fixtures.json")))
 
 
 class APIError(Exception):
-    pass
+    """An Admin API call failed. status and body are set when the server answered with an HTTP error."""
+
+    def __init__(self, message, status=None, body=""):
+        super().__init__(message)
+        self.status = status
+        self.body = body
 
 
 def api(method, path, body=None, missing_ok=False):
@@ -39,7 +45,8 @@ def api(method, path, body=None, missing_ok=False):
     except urllib.error.HTTPError as e:
         if e.code == 404 and missing_ok:
             return None
-        raise APIError(f"{method} {path}: HTTP {e.code}: {e.read().decode(errors='replace')}") from None
+        body = e.read().decode(errors="replace")
+        raise APIError(f"{method} {path}: HTTP {e.code}: {body}", status=e.code, body=body) from None
     except urllib.error.URLError as e:
         raise APIError(f"{method} {path}: {e.reason}") from None
     return json.loads(raw) if raw else None
@@ -64,7 +71,27 @@ def normalize_strategy(s):
             )
         )
     params = {k: str(v) for k, v in (s.get("parameters") or {}).items()}
-    return (s["name"], tuple(sorted(params.items())), tuple(constraints))
+    # Variants are compared as canonical JSON because their payloads are nested objects.
+    variants = json.dumps(s.get("variants") or [], sort_keys=True)
+    return (
+        s["name"],
+        tuple(sorted(params.items())),
+        tuple(constraints),
+        bool(s.get("disabled", False)),
+        tuple(sorted(s.get("segments") or [])),
+        variants,
+    )
+
+
+def is_archived_name_conflict(e):
+    """Reports whether e is Unleash 8.3.1 refusing to create a flag because an archived flag has its name."""
+    if e.status != 409:
+        return False
+    try:
+        message = json.loads(e.body).get("message", "")
+    except (ValueError, AttributeError):
+        return False
+    return "archived flag with that name already exists" in message
 
 
 def seed_context_field(field):
@@ -98,14 +125,23 @@ def seed_flag(project, flag):
     current = api("GET", base, missing_ok=True)
     flag_type = flag.get("type", "release")
     if current is None:
-        api(
-            "POST",
-            f"/api/admin/projects/{quote(project)}/features",
-            {"name": name, "type": flag_type, "description": flag.get("description", "")},
-        )
-        changes.append("created")
+        try:
+            api(
+                "POST",
+                f"/api/admin/projects/{quote(project)}/features",
+                {"name": name, "type": flag_type, "description": flag.get("description", "")},
+            )
+            changes.append("created")
+        except APIError as e:
+            if not is_archived_name_conflict(e):
+                raise
+            # An archived flag keeps its name, so it is revived instead. Unleash revives it turned off in every
+            # environment, and the reconciliation below puts the rest back.
+            api("POST", f"/api/admin/archive/revive/{quote(name)}")
+            changes.append("revived")
         current = api("GET", base)
-    elif current.get("description", "") != flag.get("description", "") or current.get("type") != flag_type:
+    # A revived flag keeps the description and type it was archived with, so this also runs after a revive.
+    if current.get("description", "") != flag.get("description", "") or current.get("type") != flag_type:
         api("PUT", base, {"description": flag.get("description", ""), "type": flag_type})
         changes.append("updated description")
 
