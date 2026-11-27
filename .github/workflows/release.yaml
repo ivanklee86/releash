@@ -12,7 +12,8 @@ on:
 # Every permission is granted on the job below.
 permissions: {}
 
-# Never cancel a release halfway through publishing; a second push of the same tag waits instead.
+# Never cancel a release halfway through publishing. A second run for the same tag waits for the
+# first; GitHub keeps only one waiting run per group, so a third would replace the second.
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
@@ -82,28 +83,47 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         # Read by the cask's repository token in .goreleaser.yaml. Prereleases do not push the cask.
         HOMEBREW_AUTH_TOKEN: ${{ secrets.HOMEBREW_AUTH_TOKEN }}
-    - name: Attest the image SBOM
+    - name: Attest the image SBOMs
       # goreleaser's sboms cover only the archives and docker_signs attaches no SBOM, so the image's
-      # SPDX SBOM is generated and attached here, to the multi-arch digest that goreleaser just signed.
+      # SPDX SBOMs are generated and attached here. Each platform image gets an SBOM of its own
+      # contents. The multi-arch digest, which spec 0002 tells users to verify, gets the linux/amd64
+      # SBOM, because an attestation names a single subject.
       id: attest
       run: |
         set -euo pipefail
+        sha256='^sha256:[0-9a-f]{64}$'
         version=$(jq -er .version dist/metadata.json)
         digest=$(docker buildx imagetools inspect "${IMAGE}:${version}" --format '{{json .Manifest.Digest}}' | tr -d '"')
-        if [[ ! "${digest}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+        if [[ ! "${digest}" =~ ${sha256} ]]; then
           echo "::error::could not read the digest of ${IMAGE}:${version}, got '${digest}'"
           exit 1
         fi
-        sbom="${RUNNER_TEMP}/image.sbom.spdx.json"
-        syft scan "registry:${IMAGE}@${digest}" --output "spdx-json=${sbom}"
-        cosign attest --yes --type spdxjson --predicate "${sbom}" "${IMAGE}@${digest}"
+        platform_digests=""
+        for arch in amd64 arm64; do
+          platform_digest=$(docker buildx imagetools inspect "${IMAGE}@${digest}" --raw \
+            | jq -er --arg arch "${arch}" '[.manifests[] | select(.platform.os == "linux" and .platform.architecture == $arch)] | if length == 1 then .[0].digest else error("expected one linux/\($arch) manifest") end')
+          if [[ ! "${platform_digest}" =~ ${sha256} ]]; then
+            echo "::error::could not read the linux/${arch} digest of ${IMAGE}@${digest}, got '${platform_digest}'"
+            exit 1
+          fi
+          sbom="${RUNNER_TEMP}/image-${arch}.sbom.spdx.json"
+          syft scan "registry:${IMAGE}@${platform_digest}" --output "spdx-json=${sbom}"
+          cosign attest --yes --type spdxjson --predicate "${sbom}" "${IMAGE}@${platform_digest}"
+          if [[ "${arch}" == amd64 ]]; then
+            cosign attest --yes --type spdxjson --predicate "${sbom}" "${IMAGE}@${digest}"
+          fi
+          platform_digests="${platform_digests} ${platform_digest}"
+        done
         echo "digest=${digest}" >> "${GITHUB_OUTPUT}"
-    - name: Verify the published signatures and attestation
-      # Runs spec 0002's verification against what was just published, so a release that users cannot
-      # verify fails here instead of in their pipelines.
+        echo "platform-digests=${platform_digests# }" >> "${GITHUB_OUTPUT}"
+    - name: Verify the published signatures and attestations
+      # Runs spec 0002's verification against what was just published. goreleaser has already made
+      # the release, the image tags and (for non-prereleases) the cask public by now, so a failure
+      # here does not hold them back: it fails the run, so an unverifiable release is noticed at once.
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         DIGEST: ${{ steps.attest.outputs.digest }}
+        PLATFORM_DIGESTS: ${{ steps.attest.outputs.platform-digests }}
       run: |
         set -euo pipefail
         dir="${RUNNER_TEMP}/verify"
@@ -114,4 +134,13 @@ jobs:
         cosign verify-blob "${dir}/checksums.txt" --bundle "${dir}/checksums.txt.sigstore.json" "${identity[@]}"
         cosign verify "${IMAGE}@${DIGEST}" "${identity[@]}" > /dev/null
         cosign verify-attestation --type spdxjson "${IMAGE}@${DIGEST}" "${identity[@]}" > /dev/null
-        echo "Verified checksums.txt, ${IMAGE}@${DIGEST} and its SPDX SBOM attestation for ${CERTIFICATE_IDENTITY}"
+        read -r -a platform_digests <<< "${PLATFORM_DIGESTS}"
+        if [[ "${#platform_digests[@]}" -ne 2 ]]; then
+          echo "::error::expected two platform digests, got '${PLATFORM_DIGESTS}'"
+          exit 1
+        fi
+        for platform_digest in "${platform_digests[@]}"; do
+          cosign verify "${IMAGE}@${platform_digest}" "${identity[@]}" > /dev/null
+          cosign verify-attestation --type spdxjson "${IMAGE}@${platform_digest}" "${identity[@]}" > /dev/null
+        done
+        echo "Verified checksums.txt, ${IMAGE}@${DIGEST}, both platform images and their SPDX SBOM attestations for ${CERTIFICATE_IDENTITY}"

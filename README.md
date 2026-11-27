@@ -50,7 +50,7 @@ cosign verify "${IMAGE}@${DIGEST}" \
 docker run --rm "${IMAGE}@${DIGEST}" --version
 ```
 
-The image's SPDX SBOM is attached as a signed attestation. Check it, and print the SBOM, with:
+The image's SPDX SBOM is attached as a signed attestation. The multi-arch digest carries the `linux/amd64` SBOM, and each platform image carries an SBOM of its own, so for an arm64 runner, verify the `linux/arm64` digest (from `docker buildx imagetools inspect --raw`) instead. Check it, and print the SBOM, with:
 
 ```sh
 cosign verify-attestation --type spdxjson "${IMAGE}@${DIGEST}" \

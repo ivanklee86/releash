@@ -107,7 +107,7 @@ Signing `checksums.txt` covers every file it lists, so archives and SBOMs are no
 - Base: `gcr.io/distroless/static-debian13:nonroot`, pinned by digest in the `Dockerfile` and kept current by Renovate. It has CA certificates and runs as UID 65532. The entrypoint is `/usr/bin/releash`.
 - Tags: `<version>` (e.g. `0.1.0`) for every release, and `latest` for non-prerelease versions. There are no floating `<major>` or `<major>.<minor>` tags. Pipelines should pin a version or a digest.
 - Labels: OCI `source`, `version`, `revision` and `licenses`.
-- The image is signed with cosign keyless signing. Its SPDX SBOM is attached as a signed attestation by an explicit `cosign attest --type spdxjson` step in the release workflow, because goreleaser's `sboms` covers only archives and `docker_signs` attaches no SBOM. Users can check it with `cosign verify-attestation --type spdxjson`.
+- The image is signed with cosign keyless signing, both the multi-arch index and each platform image in it. SPDX SBOMs are attached as signed attestations by an explicit `cosign attest --type spdxjson` step in the release workflow, because goreleaser's `sboms` covers only archives and `docker_signs` attaches no SBOM. Each platform image (`linux/amd64`, `linux/arm64`) carries an SBOM of its own contents, and the multi-arch index carries the `linux/amd64` SBOM, because an attestation has one subject. Users can check them with `cosign verify-attestation --type spdxjson`; to inspect the packages of an arm64 image, verify its platform digest.
 
 ## Homebrew
 
@@ -156,7 +156,7 @@ A pull request that changes the public contract must carry `breaking-change`. Pu
 - CI smoke-tests the linux/amd64 binary and both image platforms with `--version`, and checks that the reported version matches the snapshot version.
 - CI builds the Windows and macOS binaries but does not run them. Their correctness relies on Go's cross-compilation and the platform-independent test suite.
 - A snapshot release does not call GitHub's release-notes API, so it cannot validate `.github/release.yml`. CI checks the file statically instead: it must parse as YAML and define the categories and labels listed under [Release notes](#release-notes). CI does not call the release-notes API, because that needs `contents: write`, which pull requests from forks don't get, and because the generated notes leave out categories with no matching pull requests.
-- After publishing, the release workflow downloads `checksums.txt` and its bundle, and runs `cosign verify-blob`, `cosign verify` and `cosign verify-attestation --type spdxjson` with the identities documented above. A failure marks the workflow run as failed, so a release users cannot verify is noticed right away.
+- After publishing, the release workflow downloads `checksums.txt` and its bundle, and runs `cosign verify-blob`, then `cosign verify` and `cosign verify-attestation --type spdxjson` on the multi-arch index and on each platform image, with the identities documented above. goreleaser has already published by then, so a failure does not hold the release back: it marks the workflow run as failed, so a release users cannot verify is noticed right away.
 
 # Drawbacks
 

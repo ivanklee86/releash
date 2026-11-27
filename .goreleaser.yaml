@@ -84,9 +84,12 @@ dockers_v2:
 
 docker_signs:
   # Signs each pushed image by digest, keylessly. This runs in the publish phase, which snapshots skip.
+  # --recursive also signs each platform image in the multi-arch index, so a user who pins a
+  # platform digest can verify it too.
   - cmd: cosign
     args:
       - sign
+      - "--recursive"
       - "${artifact}@${digest}"
       - "--yes"
     output: true
