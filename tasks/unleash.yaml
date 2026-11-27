@@ -1,0 +1,31 @@
+# https://taskfile.dev
+# Included by the root Taskfile with flatten, so these tasks have no prefix.
+version: '3'
+
+vars:
+  UNLEASH_URL: http://localhost:4242
+  # Fixed dev-only token from docker-compose.yaml; not a secret.
+  UNLEASH_PRODUCTION_TOKEN: default:production.releash-dev-not-a-secret
+
+tasks:
+  services:
+    desc: Start the local Unleash stack and wait until the fixture flags are seeded.
+    cmds:
+      # ready starts only after the seed exits 0, so --wait on it returns once seeding has succeeded.
+      - docker compose up --detach --wait ready
+
+  services:down:
+    desc: Stop the local Unleash stack and delete its data.
+    cmds:
+      - docker compose down --volumes --remove-orphans
+
+  releash:
+    desc: Build releash and run it against the local stack with the production client token, e.g. task releash -- --help.
+    deps:
+      # Flattened into the root Taskfile, so the go include is referenced without a leading colon.
+      - task: go:build
+    env:
+      UNLEASH_URL: '{{.UNLEASH_URL}}'
+      UNLEASH_API_TOKEN: '{{.UNLEASH_PRODUCTION_TOKEN}}'
+    cmds:
+      - ./bin/releash {{.CLI_ARGS}}
