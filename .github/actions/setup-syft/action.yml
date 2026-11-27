@@ -16,7 +16,8 @@ runs:
       env:
         SYFT_RELEASE_VERSION: ${{ inputs.version }}
         RUNNER_ARCH_NAME: ${{ runner.arch }}
-      run: |
+      # The GITHUB_PATH entry is a fixed directory under RUNNER_TEMP, not an input.
+      run: | # zizmor: ignore[github-env]
         set -euo pipefail
         case "${RUNNER_ARCH_NAME}" in
           X64) arch=amd64 ;;

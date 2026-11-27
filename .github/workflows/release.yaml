@@ -1,0 +1,146 @@
+name: Release
+
+# Publishes a release from a v* tag (spec 0002): the GitHub release with its archives, SBOMs and signed
+# checksums, the multi-arch image on ghcr.io with its signature and SBOM attestation, and, for
+# non-prereleases, the Homebrew cask. Users verify against this file's path and the tag ref, so
+# renaming it is a breaking change.
+on:
+  push:
+    tags:
+      - 'v*'
+
+# Every permission is granted on the job below.
+permissions: {}
+
+# Never cancel a release halfway through publishing. A second run for the same tag waits for the
+# first; GitHub keeps only one waiting run per group, so a third would replace the second.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  goreleaser:
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: write  # the GitHub release and its assets
+      packages: write  # ghcr.io/ivanklee86/releash, its signatures and attestation
+      id-token: write  # the OIDC token cosign exchanges for a keyless signing certificate
+    env:
+      GORELEASER_VERSION: v2.20.3 # github-releases/goreleaser/goreleaser
+      COSIGN_VERSION: v3.1.4 # github-releases/sigstore/cosign
+      IMAGE: ghcr.io/ivanklee86/releash
+      # The keyless signing identity of this workflow at this tag, as spec 0002 documents it for users.
+      CERTIFICATE_IDENTITY: https://github.com/ivanklee86/releash/.github/workflows/release.yaml@${{ github.ref }}
+      CERTIFICATE_OIDC_ISSUER: https://token.actions.githubusercontent.com
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        # goreleaser reads the tags to work out the version and the previous release.
+        fetch-depth: 0
+        # goreleaser talks to GitHub with GITHUB_TOKEN, not git, so the token stays out of .git/config.
+        persist-credentials: false
+    - name: Install Go
+      uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+      with:
+        go-version-file: go.mod
+        # A release builds from a clean module cache, so a cache saved by another run cannot change it.
+        cache: false
+    - name: Install syft
+      # goreleaser runs syft for the archive SBOMs, and the attestation step for the image SBOM.
+      uses: ./.github/actions/setup-syft
+    - name: Install cosign
+      uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
+      with:
+        cosign-release: ${{ env.COSIGN_VERSION }}
+    - name: Set up QEMU
+      # For the arm64 image build. The binaries themselves are cross-compiled by Go. The binfmt image
+      # is set because the action otherwise pulls its floating latest tag.
+      uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+      with:
+        image: tonistiigi/binfmt:qemu-v10.2.3@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0
+        platforms: arm64
+    - name: Set up Docker Buildx
+      # dockers_v2 builds a multi-platform manifest, which the default docker driver cannot. The
+      # BuildKit image is set because the docker-container driver otherwise starts its floating default.
+      uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      with:
+        driver-opts: image=moby/buildkit:v0.35.1@sha256:baf6138eb8c37644800c7c913fba051e840ebb9ba13eaf92d92ef9a1712d0b4c
+    - name: Log in to ghcr.io
+      # Also used by syft and cosign below, which read the same Docker credentials.
+      uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    - name: Run goreleaser
+      uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
+      with:
+        distribution: goreleaser
+        version: ${{ env.GORELEASER_VERSION }}
+        args: release --clean
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # Read by the cask's repository token in .goreleaser.yaml. Prereleases do not push the cask.
+        HOMEBREW_AUTH_TOKEN: ${{ secrets.HOMEBREW_AUTH_TOKEN }}
+    - name: Attest the image SBOMs
+      # goreleaser's sboms cover only the archives and docker_signs attaches no SBOM, so the image's
+      # SPDX SBOMs are generated and attached here. Each platform image gets an SBOM of its own
+      # contents. The multi-arch digest, which spec 0002 tells users to verify, gets the linux/amd64
+      # SBOM, because an attestation names a single subject.
+      id: attest
+      run: |
+        set -euo pipefail
+        sha256='^sha256:[0-9a-f]{64}$'
+        version=$(jq -er .version dist/metadata.json)
+        digest=$(docker buildx imagetools inspect "${IMAGE}:${version}" --format '{{json .Manifest.Digest}}' | tr -d '"')
+        if [[ ! "${digest}" =~ ${sha256} ]]; then
+          echo "::error::could not read the digest of ${IMAGE}:${version}, got '${digest}'"
+          exit 1
+        fi
+        platform_digests=""
+        for arch in amd64 arm64; do
+          platform_digest=$(docker buildx imagetools inspect "${IMAGE}@${digest}" --raw \
+            | jq -er --arg arch "${arch}" '[.manifests[] | select(.platform.os == "linux" and .platform.architecture == $arch)] | if length == 1 then .[0].digest else error("expected one linux/\($arch) manifest") end')
+          if [[ ! "${platform_digest}" =~ ${sha256} ]]; then
+            echo "::error::could not read the linux/${arch} digest of ${IMAGE}@${digest}, got '${platform_digest}'"
+            exit 1
+          fi
+          sbom="${RUNNER_TEMP}/image-${arch}.sbom.spdx.json"
+          syft scan "registry:${IMAGE}@${platform_digest}" --output "spdx-json=${sbom}"
+          cosign attest --yes --type spdxjson --predicate "${sbom}" "${IMAGE}@${platform_digest}"
+          if [[ "${arch}" == amd64 ]]; then
+            cosign attest --yes --type spdxjson --predicate "${sbom}" "${IMAGE}@${digest}"
+          fi
+          platform_digests="${platform_digests} ${platform_digest}"
+        done
+        echo "digest=${digest}" >> "${GITHUB_OUTPUT}"
+        echo "platform-digests=${platform_digests# }" >> "${GITHUB_OUTPUT}"
+    - name: Verify the published signatures and attestations
+      # Runs spec 0002's verification against what was just published. goreleaser has already made
+      # the release, the image tags and (for non-prereleases) the cask public by now, so a failure
+      # here does not hold them back: it fails the run, so an unverifiable release is noticed at once.
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        DIGEST: ${{ steps.attest.outputs.digest }}
+        PLATFORM_DIGESTS: ${{ steps.attest.outputs.platform-digests }}
+      run: |
+        set -euo pipefail
+        dir="${RUNNER_TEMP}/verify"
+        mkdir -p "${dir}"
+        gh release download "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" --dir "${dir}" \
+          --pattern checksums.txt --pattern checksums.txt.sigstore.json
+        identity=(--certificate-identity "${CERTIFICATE_IDENTITY}" --certificate-oidc-issuer "${CERTIFICATE_OIDC_ISSUER}")
+        cosign verify-blob "${dir}/checksums.txt" --bundle "${dir}/checksums.txt.sigstore.json" "${identity[@]}"
+        cosign verify "${IMAGE}@${DIGEST}" "${identity[@]}" > /dev/null
+        cosign verify-attestation --type spdxjson "${IMAGE}@${DIGEST}" "${identity[@]}" > /dev/null
+        read -r -a platform_digests <<< "${PLATFORM_DIGESTS}"
+        if [[ "${#platform_digests[@]}" -ne 2 ]]; then
+          echo "::error::expected two platform digests, got '${PLATFORM_DIGESTS}'"
+          exit 1
+        fi
+        for platform_digest in "${platform_digests[@]}"; do
+          cosign verify "${IMAGE}@${platform_digest}" "${identity[@]}" > /dev/null
+          cosign verify-attestation --type spdxjson "${IMAGE}@${platform_digest}" "${identity[@]}" > /dev/null
+        done
+        echo "Verified checksums.txt, ${IMAGE}@${DIGEST}, both platform images and their SPDX SBOM attestations for ${CERTIFICATE_IDENTITY}"
