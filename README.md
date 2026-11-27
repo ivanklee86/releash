@@ -2,7 +2,7 @@
 
 A small CLI to drive CI/CD changes via Unleash feature flags
 
-releash is in early development. The first complete release is v0.1.2: v0.1.0 was never published and v0.1.1 is incomplete (no Homebrew cask, no image SBOM attestations), so use v0.1.2 or later. The instructions below use v0.1.2.
+releash is in early development. The first complete release is v0.1.2, so use v0.1.2 or later. v0.1.0 has no release, archives or image, though `go install ...@v0.1.0` still resolves, to a pre-release commit; v0.1.1 has no Homebrew cask and no image SBOM attestations. The instructions below use v0.1.2.
 
 ## Install
 
@@ -77,7 +77,7 @@ go install github.com/ivanklee86/releash@v0.1.2
 
 ### Versions
 
-`releash --version` prints `releash version <version>`. Release binaries and images report the version without a leading `v` (`releash version 0.1.2`), and `go install` builds report the Go module version (`releash version v0.1.2`). Versions follow SemVer from v0.1.0. Before v1.0.0, a breaking change to the public contract (command and option names, defaults, environment variables, stdout, exit codes, and archive and image names) bumps the minor version and is listed under "Breaking changes" in the release notes. Exit codes never change meaning in any version ([ADR 0004](docs/adrs/0004-exit-code-contract.md)).
+`releash --version` prints `releash version <version>`. Release binaries and images report the version without a leading `v` (`releash version 0.1.2`), and `go install` builds report the Go module version (`releash version v0.1.2`). Versions follow SemVer from v0.1.0, and the first complete release is v0.1.2. Before v1.0.0, a breaking change to the public contract (command and option names, defaults, environment variables, stdout, exit codes, and archive and image names) bumps the minor version and is listed under "Breaking changes" in the release notes. Exit codes never change meaning in any version ([ADR 0004](docs/adrs/0004-exit-code-contract.md)).
 
 ## Usage
 

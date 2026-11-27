@@ -25,7 +25,7 @@ Specs (in `docs/specs`) delivered by this milestone. Check each off when it is i
 - CD follows argonap: `.github/workflows/release.yaml` runs on `v*` tags with only the permissions it needs (`contents`, `packages`, and `id-token` for signing), sets up QEMU and Buildx for the arm64 image, and runs a SHA-pinned `goreleaser-action` at a pinned goreleaser version.
 - `ci.yaml` gains argonap's `release-check` job: a snapshot release on every pull request, with the linux/amd64 binary and both image platforms smoke-tested with `--version`, so release breakage is caught before a tag exists.
 - `releash --version` reports the released version, including for `go install` builds.
-- Release notes are GitHub-generated, grouped by the labels in `.github/release.yml`, and the labels exist in the repository.
+- Release notes are GitHub-generated, grouped by the labels in `.github/release.yml`, and the labels exist in the repository. goreleaser sets this up with `changelog.use: github-native`, and every release uses it. The `v0.1.2` notes were replaced afterwards with a list built the same way (pull request titles grouped by those labels), because GitHub's generator starts at the previous release, `v0.1.1`, and so would have left the first complete release's notes with two entries; the M5 plan records how.
 - `v0.1.2` is released and verifies with the commands in spec 0002. The milestone first named `v0.1.0`: that tag was never published, because its run rebuilt the rc on the same commit, and `v0.1.1` was published without its cask and image SBOM attestations. `v0.1.2` is the first release that published everything, and the M5 plan records both failures.
 - The README documents installation, verification and a pipeline example for at least one CI system.
 

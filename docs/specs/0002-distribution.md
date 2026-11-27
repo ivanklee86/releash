@@ -5,7 +5,7 @@
 
 # Summary
 
-releash is released from version tags as signed, static binaries for Linux, macOS and Windows, a multi-architecture container image on ghcr.io, and a Homebrew cask. Every release publishes SHA-256 checksums, SBOMs and Sigstore cosign keyless signatures, so a pipeline can verify that the binary it is about to trust with deploy decisions was built by this repository's release workflow. Versions follow SemVer, starting at v0.1.0.
+releash is released from version tags as signed, static binaries for Linux, macOS and Windows, a multi-architecture container image on ghcr.io, and a Homebrew cask. Every release publishes SHA-256 checksums, SBOMs and Sigstore cosign keyless signatures, so a pipeline can verify that the binary it is about to trust with deploy decisions was built by this repository's release workflow. Versions follow SemVer, starting at v0.1.0; the first complete release is v0.1.2 (see [Versioning](#versioning)).
 
 # Motivation
 
