@@ -4,7 +4,7 @@ Started 2026-11-27. Status: done (2026-11-27). Milestone: [M1](../milestones/M1-
 
 ## Resume here
 
-Updated 2026-11-27. M1 is done: PRs 1–4 are merged (#2, #4, #5, #7), CI passes on `main`, and every exit criterion holds. The user decided that a stray argument together with `--help` or `--version` may exit 0, and the M1 exit criterion says so. PR 5 predates CI, so its code was first checked by CI on #7. Next work is M2 ([milestone](../milestones/M2-dev-tooling-and-testing.md)), which starts from a new plan.
+Updated 2026-11-27. M1 is done: PRs 1–4 are merged (#2, #4, #5, #7), CI passes on `main`, and every exit criterion holds. The user decided that a stray argument together with `--help` or `--version` may exit 0, and the M1 exit criterion says so. #2, #4 and #5 (plan steps PR 1–3) predate CI, so their code was first checked by CI on #7. Next work is M2 ([milestone](../milestones/M2-dev-tooling-and-testing.md)), which starts from a new plan.
 
 ## How to work through this plan
 
@@ -59,7 +59,7 @@ Check for newer releases at the start of each PR, and use them if they are avail
 
 ### PR 2: devcontainer
 
-- [x] Branch `devcontainer`. Verified 2026-11-27: gantry regenerates with no diff, and the image builds with Go 1.27.4, golangci-lint v2.15.0 and prek 0.5.11.
+- [x] Branch `devcontainer`. Merged as #4. Verified 2026-11-27: gantry regenerates with no diff, and the image builds with Go 1.27.4, golangci-lint v2.15.0 and prek 0.5.11.
 - Contents: `.devcontainer/gantry.yaml`, `releash.libsonnet` (sets only the name), `Dockerfile`, the generated `devcontainer.json`, and `devcontainer-lock.json`, which pins the devcontainer features by digest and is written by VS Code's Dev Containers extension when it builds the container. Also a minimal `.pre-commit-config.yaml` (whitespace, YAML, merge-conflict and large-file checks, plus `golangci-lint fmt`, `golangci-lint run` and `go mod tidy -diff`), because the devcontainer's post-create step runs `prek install && prek run`, which fails without a config. M2 adds markdownlint and the Renovate config hook.
 - Checks: `gantry build --config gantry.yaml --write` in `.devcontainer/` gives no diff; `docker build .devcontainer` succeeds.
 - Milestone criteria: devcontainer.

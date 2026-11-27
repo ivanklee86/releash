@@ -96,6 +96,22 @@ func TestExecute(t *testing.T) {
 			wantCode:           releash.ExitUsage,
 			wantStderrContains: []string{"unknown flag: --bogus", "releash --help"},
 		},
+		// M1 allows a stray argument next to --help or --version: cobra
+		// handles those flags before it validates arguments.
+		{
+			name:               "stray argument with --help prints help",
+			args:               []string{"bogus", "--help"},
+			version:            "dev",
+			wantCode:           releash.ExitOK,
+			wantStdoutContains: []string{"Usage:", "releash [flags]"},
+		},
+		{
+			name:       "stray argument with --version prints the version",
+			args:       []string{"bogus", "--version"},
+			version:    "v1.2.3",
+			wantCode:   releash.ExitOK,
+			wantStdout: "releash version v1.2.3\n",
+		},
 	}
 
 	for _, tt := range tests {
