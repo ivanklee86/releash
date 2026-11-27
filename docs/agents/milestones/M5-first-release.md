@@ -1,5 +1,5 @@
 ---
-status: active  # planned | active | done | dropped
+status: done  # planned | active | done | dropped
 ---
 
 # M5: First release
@@ -12,7 +12,7 @@ Pipelines can install a released `releash` binary or container image at a pinned
 
 Specs (in `docs/specs`) delivered by this milestone. Check each off when it is implemented.
 
-- [ ] [0002-distribution](../../specs/0002-distribution.md)
+- [x] [0002-distribution](../../specs/0002-distribution.md)
 
 ## Exit criteria
 
@@ -26,7 +26,7 @@ Specs (in `docs/specs`) delivered by this milestone. Check each off when it is i
 - `ci.yaml` gains argonap's `release-check` job: a snapshot release on every pull request, with the linux/amd64 binary and both image platforms smoke-tested with `--version`, so release breakage is caught before a tag exists.
 - `releash --version` reports the released version, including for `go install` builds.
 - Release notes are GitHub-generated, grouped by the labels in `.github/release.yml`, and the labels exist in the repository.
-- `v0.1.0` is released and verifies with the commands in spec 0002.
+- `v0.1.2` is released and verifies with the commands in spec 0002. The milestone first named `v0.1.0`: that tag was never published, because its run rebuilt the rc on the same commit, and `v0.1.1` was published without its cask and image SBOM attestations. `v0.1.2` is the first release that published everything, and the M5 plan records both failures.
 - The README documents installation, verification and a pipeline example for at least one CI system.
 
 ## Out of scope

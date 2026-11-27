@@ -2,7 +2,7 @@
 
 A small CLI to drive CI/CD changes via Unleash feature flags
 
-releash is in early development. The first release, v0.1.0, is being prepared in M5 (see [`docs/agents/milestones`](docs/agents/milestones)); until it is published, install with `go install` at a commit SHA. The instructions below use v0.1.0.
+releash is in early development. The first complete release is v0.1.2: v0.1.0 was never published and v0.1.1 is incomplete (no Homebrew cask, no image SBOM attestations), so use v0.1.2 or later. The instructions below use v0.1.2.
 
 ## Install
 
@@ -13,7 +13,7 @@ releash runs in pipelines that decide whether to deploy, so pin an exact version
 Archives are published for Linux and macOS on amd64 and arm64 (`.tar.gz`) and for Windows on amd64 (`.zip`), named `releash_<version>_<os>_<arch>`, where `<version>` has no leading `v`. Check that `checksums.txt` was signed by the release workflow at that tag, then that the archive matches it:
 
 ```sh
-VERSION=0.1.0
+VERSION=0.1.2
 BASE=https://github.com/ivanklee86/releash/releases/download/v${VERSION}
 
 curl -sSfLO "${BASE}/releash_${VERSION}_linux_amd64.tar.gz"
@@ -37,7 +37,7 @@ On macOS, use `shasum -a 256 --check --ignore-missing checksums.txt`. The macOS 
 `ghcr.io/ivanklee86/releash` is a multi-architecture image for linux/amd64 and linux/arm64, tagged `<version>` and, for releases that are not prereleases, `latest`. There are no `0` or `0.1` tags. Resolve the tag to a digest, verify the digest, and then run that digest, because a tag can move between two commands:
 
 ```sh
-VERSION=0.1.0
+VERSION=0.1.2
 IMAGE=ghcr.io/ivanklee86/releash
 IDENTITY="https://github.com/ivanklee86/releash/.github/workflows/release.yaml@refs/tags/v${VERSION}"
 
@@ -72,12 +72,12 @@ The cask is published for releases that are not prereleases.
 ### Go
 
 ```sh
-go install github.com/ivanklee86/releash@v0.1.0
+go install github.com/ivanklee86/releash@v0.1.2
 ```
 
 ### Versions
 
-`releash --version` prints `releash version <version>`. Release binaries and images report the version without a leading `v` (`releash version 0.1.0`), and `go install` builds report the Go module version (`releash version v0.1.0`). Versions follow SemVer from v0.1.0. Before v1.0.0, a breaking change to the public contract (command and option names, defaults, environment variables, stdout, exit codes, and archive and image names) bumps the minor version and is listed under "Breaking changes" in the release notes. Exit codes never change meaning in any version ([ADR 0004](docs/adrs/0004-exit-code-contract.md)).
+`releash --version` prints `releash version <version>`. Release binaries and images report the version without a leading `v` (`releash version 0.1.2`), and `go install` builds report the Go module version (`releash version v0.1.2`). Versions follow SemVer from v0.1.0. Before v1.0.0, a breaking change to the public contract (command and option names, defaults, environment variables, stdout, exit codes, and archive and image names) bumps the minor version and is listed under "Breaking changes" in the release notes. Exit codes never change meaning in any version ([ADR 0004](docs/adrs/0004-exit-code-contract.md)).
 
 ## Usage
 
@@ -146,7 +146,7 @@ jobs:
     permissions:
       contents: read
     env:
-      RELEASH_VERSION: 0.1.0
+      RELEASH_VERSION: 0.1.2
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
