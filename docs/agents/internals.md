@@ -4,7 +4,7 @@ How the releash repository is organised. Keep this up to date as the repository 
 
 ## Status
 
-M1 ([milestone](milestones/M1-skeleton-mvp.md), [plan](plans/2026-11-27-m1-skeleton-mvp.md)) is done. releash builds and prints help and its version. It has no commands yet: `check` arrives in M3 and the Unleash SDK in M4.
+M1 ([milestone](milestones/M1-skeleton-mvp.md), [plan](plans/2026-11-27-m1-skeleton-mvp.md)) and M2 ([milestone](milestones/M2-dev-tooling-and-testing.md), [plan](plans/2026-11-27-m2-dev-tooling-and-testing.md)) are done. M2 added the local Unleash stack, integration test scaffolding, Renovate and the full CI. releash builds and prints help and its version. It has no commands yet: `check` arrives in M3 and the Unleash SDK in M4.
 
 ## Documentation layout
 
@@ -117,6 +117,8 @@ Run `task` with no arguments to format, lint, build and test. The tasks in `task
 ## CI
 
 `.github/workflows/ci.yaml` runs on pull requests and pushes to `main`. It has read-only `contents` permission by default and cancels superseded pull request runs. Every job runs on `ubuntu-26.04`.
+
+The `main` repository ruleset (set in GitHub, not in the repository) requires a pull request for every change to `main`, with no required approvals, and requires the `lint`, `test`, `pre-commit` and `integration` checks to pass before merging. It also blocks force-pushes and deleting `main`, and it has no bypass list. Branches need not be up to date with `main` before merging. Renovate's automerge goes through GitHub's native auto-merge, so these required checks are what makes it wait for CI.
 
 | Job | What it does |
 |---|---|

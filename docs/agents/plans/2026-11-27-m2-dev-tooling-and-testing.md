@@ -1,10 +1,10 @@
 # Plan: M2 dev tooling and testing
 
-Started 2026-11-27. Status: in progress. Milestone: [M2](../milestones/M2-dev-tooling-and-testing.md).
+Started 2026-11-27. Status: done (2026-11-27). Milestone: [M2](../milestones/M2-dev-tooling-and-testing.md).
 
 ## Resume here
 
-Updated 2026-11-27. PRs 1–3 are merged (#9, #11, #12). PR 4 is committed locally on `m2/ci`; it needs CI to pass on its own pull request, since it adds the jobs. Next: the user ships it, then the close-out step. When resuming, start the first PR in [Steps](#steps) that is not checked off and whose dependencies are merged. Before ending a session, update this section and check off finished steps.
+Updated 2026-11-27. M2 is done: PRs 1–4 are merged (#9, #11, #12, #13), every CI job passes on the pull requests and on `main`, and every exit criterion holds. The Renovate app is enabled and already opening pull requests (e.g. #10). Next work is M3 ([milestone](../milestones/M3-check-command-contract.md)), which starts from a new plan and fills in the M3 scenario stubs.
 
 ## How to work through this plan
 
@@ -36,8 +36,8 @@ Pinned versions, checked 2026-11-27. Check for newer releases at the start of ea
 | Tool or image | Version |
 |---|---|
 | `unleashorg/unleash-server` | 8.3.1 |
-| `postgres` | 18 (exact tag chosen in PR 2) |
-| `python` (seed) | newest stable `-alpine` |
+| `postgres` | 18.7-alpine (pinned by digest in `docker-compose.yaml`) |
+| `python` (seed) | 3.15.2-alpine (pinned by digest in `docker-compose.yaml`) |
 | `github.com/Unleash/unleash-go-sdk/v6` | v6.5.1 (M4 adds it; listed for the Renovate group) |
 | Docker Compose (devcontainer) | v5.8.0 |
 | markdownlint-cli2 hook | v0.24.2 |
@@ -77,7 +77,7 @@ Pinned versions, checked 2026-11-27. Check for newer releases at the start of ea
 
 ### PR 4: CI jobs
 
-- [ ] Branch `m2/ci`. The `pre-commit` job skips the golangci-lint and `go mod tidy` hooks, which the `lint` job already runs. The `integration` job installs only go-junit-report through a new `go:install-test-ci` task, and caches `~/go/bin` under its own key.
+- [x] Branch `m2/ci`. Merged as #13, with every job green on the PR and on `main`. Its review added `go mod tidy -diff` to the `lint` job and skips reporting on fork pull requests. The `pre-commit` job skips the golangci-lint and `go mod tidy` hooks, which the `lint` job already runs. The `integration` job installs only go-junit-report through a new `go:install-test-ci` task, and caches `~/go/bin` under its own key.
 - Contents: `ci.yaml` gains a `pre-commit` job (prek-action, SHA-pinned), an `integration` job (`task services`, `task go:test-ci`, compose logs on failure, publish-unit-test-result-action and octocov, both SHA-pinned, with the write permissions they need), and `.octocov.yml`.
 - Checks: every job passes on the PR, and on `main` after merging.
 - Milestone criteria: Quality and CI.
@@ -85,4 +85,4 @@ Pinned versions, checked 2026-11-27. Check for newer releases at the start of ea
 
 ### Close out
 
-- [ ] Every M2 exit criterion holds. Set M2 to `done`, and update this plan's status. Confirm the Renovate app is enabled for the repository (milestone risk).
+- [x] Every M2 exit criterion holds. Set M2 to `done`, and update this plan's status. Confirm the Renovate app is enabled for the repository (milestone risk).

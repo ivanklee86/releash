@@ -1,5 +1,5 @@
 ---
-status: active  # planned | active | done | dropped
+status: done  # planned | active | done | dropped
 ---
 
 # M2: Dev tooling and testing
@@ -56,7 +56,7 @@ Specs (in `docs/specs`) delivered by this milestone. Check each off when it is i
   - the devcontainer base image, pinned by digest in `.devcontainer/Dockerfile`. Devcontainer features are maintained in the shared gantry base (`ivanklee86/devcontainers`) and are not tracked here.
   - GitHub Actions, and tool versions in workflows and the `setup-task` action marked with `# <datasource>/<depName>` comments, as argonap does
   - pre-commit hooks in `.pre-commit-config.yaml`
-- Updates are grouped as in argonap, without its `devcontainer` group and with the Go toolchain split out: `go` (modules), `go-toolchain` (the Go version, the devcontainer base image and golangci-lint, which must move together), `ci` (actions, hooks, CI tools), and a new `unleash` group for the Unleash server image together with the Go SDK. The server image and the seed script are upgraded together (see Risks).
+- Updates are grouped as in argonap, without its `devcontainer` group and with the Go toolchain split out: `go` (modules, and tools pinned with `go install` such as go-junit-report), `go-toolchain` (the Go version, the devcontainer base image and golangci-lint, which must move together), `ci` (actions, hooks, and CI tools pinned through `# github-releases/...` comments), and a new `unleash` group for the Unleash server image together with the Go SDK. The server image and the seed script are upgraded together (see Risks).
 - Minor, patch, pin and digest updates automerge once CI passes. Major updates of Go modules need a human, and so do `go-toolchain` updates of any size (the devcontainer's golangci-lint comes from the base image and is built with its Go, so CI must not drift from it) and Unleash server and SDK updates of any size, because the integration tests are the only guard against behaviour changes there.
 - The Renovate config hook in prek validates `renovate.json`.
 
@@ -78,7 +78,7 @@ Specs (in `docs/specs`) delivered by this milestone. Check each off when it is i
 
 ## Risks / open questions
 
-- The Renovate app must be enabled for `ivanklee86/releash` before Renovate can be confirmed working.
+- The Renovate app must be enabled for `ivanklee86/releash` before Renovate can be confirmed working. Resolved 2026-11-27: the app is enabled and opens update pull requests (e.g. #10, a `go` module update). Automerge waits for CI because the `main` ruleset requires the `lint`, `test`, `pre-commit` and `integration` checks.
 - The seed script uses the Unleash Admin API, which can change between server versions. The image pin and the seed script live side by side so they are upgraded together, and the smoke test catches drift.
 - IP-targeted fixtures depend on the address the runner uses to reach Unleash, which differs between the devcontainer (Docker-in-Docker), a CI runner and a human's machine. The fixture should list the loopback address and the Docker bridge ranges, and the M4 test should assert against the address releash actually detects.
 - The integration job needs Docker on the CI runner. GitHub-hosted Ubuntu runners have it, and the devcontainer has Docker-in-Docker.
