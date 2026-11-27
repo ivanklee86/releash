@@ -43,6 +43,8 @@ import (
 //   - a register request that never finishes, directly or after a redirect,
 //     does not change the answer or hold back a fetch failure past its own
 //     deadline
+//   - the SDK fetches the flags once, so no later refresh can end the check
+//   - after ready, OnError passes on only errors without a URL
 //   - no files are written to the temp directory
 
 const testToken = "default:production.test-token"
@@ -474,7 +476,7 @@ func TestCheckWritesNoFiles(t *testing.T) {
 	assert.Empty(t, entries, "files in the temp directory")
 }
 
-func TestOnErrorPassesOnOnlyFetchAndEvaluationErrors(t *testing.T) {
+func TestOnErrorPassesOnOnlyFetchAndEvaluationErrorsBeforeReady(t *testing.T) {
 	urlErr := func(path string) error {
 		return &url.Error{Op: "Post", URL: "http://unleash.example.com/api" + path, Err: errors.New("connection refused")}
 	}
@@ -531,4 +533,50 @@ func unresponsiveServer(t *testing.T) string {
 		}
 	})
 	return "http://" + ln.Addr().String() + "/api"
+}
+
+func TestOnErrorPassesOnOnlyEvaluationErrorsAfterReady(t *testing.T) {
+	// After the one feature fetch, a *url.Error can only be from a register or
+	// metrics request, even when a redirect makes it name another path.
+	urlErr := func(path string) error {
+		return &url.Error{Op: "Post", URL: "http://unleash.example.com" + path, Err: errors.New("connection reset")}
+	}
+	for _, tt := range []struct {
+		name        string
+		err         error
+		wantFailed  bool
+		wantProblem bool
+	}{
+		{"metrics error naming a shared redirect hop", urlErr("/forward"), false, true},
+		{"error naming the features path", urlErr("/api/client/features"), false, true},
+		{"evaluation error", errors.New("segment does not exist"), true, false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			l := newSDKListener(nil)
+			l.OnReady()
+			l.OnError(tt.err)
+			assert.Equal(t, tt.wantFailed, len(l.failed) == 1, "passed on as an evaluation error")
+			assert.Equal(t, tt.wantProblem, len(l.metricsProblem) == 1, "signalled as a metrics problem")
+		})
+	}
+}
+
+func TestCheckFetchesTheFlagsOnlyOnce(t *testing.T) {
+	// A later refresh that failed while the check waits for metrics would
+	// otherwise look like an evaluation error.
+	var mu sync.Mutex
+	var intervals []string
+	url := fakeUnleash(t, func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		intervals = append(intervals, r.Header.Get("Unleash-Interval"))
+		mu.Unlock()
+		serve(http.StatusOK, featuresJSON(enabledFlag))(w, r)
+	}, nil)
+
+	stdout, _, _ := runCheck(t, url, "on", false)
+
+	assert.Equal(t, "true\n", stdout)
+	mu.Lock()
+	defer mu.Unlock()
+	assert.Equal(t, []string{"86400000"}, intervals, "the refresh interval the SDK announces, in ms")
 }
