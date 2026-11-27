@@ -59,3 +59,4 @@ Done 2026-11-27, at the user's request, against `main` after M5. The design (the
 - `variant` ships in the minor release `v0.2.0` under spec 0002, with the `enhancement` label, and its variable names are public contract from then. M6 now ends with that release.
 - Fixtures: `seed.py` and `integration.CreateFlag` need feature variants through the Unleash 8.3.1 Admin API.
 - Decision, the user, 2026-11-27: the reworked spec and ADRs go back to `draft` and `proposed` until the user re-accepts them.
+- Decision, the user, 2026-11-27: pipelines want environment variables, so `--format json` is dropped from the first version and listed under spec 0003's future possibilities. `--format` keeps `dotenv` (the default) and `shell`, which loads the variables into a shell script safely, e.g. where a later step sources a file instead of reading a CI env file.

@@ -24,7 +24,7 @@ Specs (in `docs/specs`) delivered by this milestone. Check each off when it is i
 - A disabled flag prints `ENABLED=false` and `VARIANT=disabled`, writes an error naming `releash check` to stderr, and exits 6. Combined with a command line error, the lower code wins.
 - Exit 6 behaves as ADR 0004 and ADR 0007 describe, and the exit code constants include it.
 - Unit tests cover the flattening rules in spec 0003: nesting, arrays, scalars, `null`, empty containers, preserved number text, name normalisation, and every kind of collision.
-- `--format shell` output survives `eval` unchanged for values containing `'`, `$`, `` ` ``, `\`, spaces and newlines, and `--format json` parses with `jq`.
+- `--format shell` output survives `eval` unchanged for values containing `'`, `$`, `` ` ``, `\`, spaces and newlines.
 - Each fallback of spec 0001, invalid JSON in a payload, a collision and an unrepresentable value prints the disabled variant, exits 0, is silent without `--loud`, and has its own `--loud` line.
 - Each command and configuration error of spec 0001 prints the fallback in the requested format with the spec's exit code, and an invalid `--format` or `--prefix` exits 2. The format for stdout comes from a scan of the raw arguments, so a parse error before or after `--format` still prints the fallback in that format, and an invalid or ambiguous `--format` prints nothing. A recovered panic prints the fallback and exits 1.
 - With `--user-id` fixed, repeated runs get the same variant, a custom stickiness property gives each value a fixed variant, and `--loud` warns when the flag uses default stickiness and neither `--user-id` nor `--session-id` is set.
@@ -38,7 +38,7 @@ Specs (in `docs/specs`) delivered by this milestone. Check each off when it is i
 
 ## Out of scope
 
-- Several flags in one call, selecting part of a payload, and the `github` format (future possibilities in spec 0003).
+- Several flags in one call, selecting part of a payload, and the `github` and `json` formats (future possibilities in spec 0003).
 - Changes to `releash check`'s output or exit codes.
 
 ## Risks / open questions

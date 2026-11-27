@@ -77,8 +77,6 @@ releash variant checkout-redesign --prefix CHECKOUT_
 eval "$(releash variant checkout-redesign --format shell)"
 ```
 
-`--format json` prints the result as one JSON object, for `jq`.
-
 ## Keep the variant sticky
 
 Unleash assigns variants by stickiness, which by default is `userId`, then `sessionId`, then random. A pipeline usually sets neither, so without help each run, and each retry of a run, could get a different variant. releash does not guess which CI system it runs on, so pass something that identifies the unit you are experimenting on, usually the repository or pipeline.
@@ -150,7 +148,7 @@ $ echo $?
 
 ```text
 releash variant <flag> [--url <url>] [--token <token>] [--timeout <duration>] [--loud]
-                       [--format dotenv|shell|json] [--prefix <prefix>]
+                       [--format dotenv|shell] [--prefix <prefix>]
                        [--env <name>] [--app-name <name>]
                        [--user-id <id>] [--session-id <id>]
                        [--remote-address <ip>] [--current-time <timestamp>]
@@ -213,9 +211,8 @@ Two paths that normalise to the same name are a collision, e.g. `{"a-b": 1, "a_b
 |---|---|---|
 | `dotenv` (default) | `NAME=value`, one per line, with no quoting or escaping | `$GITHUB_ENV`, `$GITHUB_OUTPUT`, GitLab `artifacts:reports:dotenv`, `docker run --env-file` |
 | `shell` | `export NAME='value'`, one per line, with `'` written as `'\''` | `eval` in POSIX shells |
-| `json` | One JSON object and a newline: `{"enabled": bool, "variant": string, "payload": {"type": string, "value": any} or null}`, where `value` is parsed for `json` payloads and a string otherwise | `jq` and other programs |
 
-`dotenv` has no way to represent a newline in a value, and the consumers above disagree on quoting, so values are written as they are. A value that contains a newline (`\n` or `\r`) or a NUL in `dotenv` format makes the payload unusable. `shell` and `json` can represent any value, but a NUL is still rejected in `shell`, because shells cannot hold it in a variable.
+`dotenv` has no way to represent a newline in a value, and the consumers above disagree on quoting, so values are written as they are. A value that contains a newline (`\n` or `\r`) or a NUL in `dotenv` format makes the payload unusable. `shell` can represent any value but a NUL, which it rejects because shells cannot hold it in a variable.
 
 ## Output and exit codes
 
@@ -266,12 +263,12 @@ A fallback exits 0 even when it happens after `check` answered `true`, e.g. beca
 - Disabled flag: prints `ENABLED=false` and `VARIANT=disabled` in the requested format, writes the error naming `releash check` to stderr without `--loud`, and exits 6. A disabled flag combined with a command line error exits with the command line error's code.
 - Flattening: nested objects, arrays, arrays of objects, `null`, booleans, empty objects and arrays, a scalar root, number text preserved (`1.0`, `12345678901234567890`), and member names with `-`, `.`, spaces and non-ASCII characters.
 - Collisions: names that normalise to the same variable, `__` in a member name that collides with nesting, and duplicate member names each fall back with their own `--loud` line.
-- Formats: a value with `'`, `$`, `` ` ``, `\` and spaces survives `eval` of `--format shell` unchanged; a value with a newline falls back in `dotenv` and is preserved in `shell` and `json`; `--format json` parses with `jq` and matches the dotenv output.
+- Formats: a value with `'`, `$`, `` ` ``, `\` and spaces survives `eval` of `--format shell` unchanged; a value with a newline falls back in `dotenv` and is preserved in `shell`.
 - Prefix: the default prefix normalises the flag name; `--prefix` replaces it; an empty, lower-case or otherwise invalid prefix exits 2.
 - Stickiness: with `--user-id` fixed, repeated runs get the same variant; with a custom stickiness property, each value maps to the same variant every time; `--loud` warns when the flag uses default stickiness and neither `--user-id` nor `--session-id` is set.
 - Fallback: every fallback case of spec 0001, invalid JSON in a `json` payload, and each unrepresentable value print the disabled variant, exit 0, are silent without `--loud`, and finish within `--timeout`.
 - Command and configuration errors: each exit code of spec 0001 prints the fallback in the requested format; an invalid `--format` exits 2 with empty stdout. An option given before `variant` exits 2. A recovered panic prints the fallback and exits 1.
-- The `--format` pre-scan: an unknown option before `--format json` and one after it both print the fallback as JSON; `--format` given twice with the same value exits 2 in that format; two different values, an invalid value and a trailing `--format` exit 2 with empty stdout; `--format` after `--` is not read.
+- The `--format` pre-scan: an unknown option before `--format shell` and one after it both print the fallback as `export` lines; `--format` given twice with the same value exits 2 in that format; two different values, an invalid value and a trailing `--format` exit 2 with empty stdout; `--format` after `--` is not read.
 - Unknown and disabled flags: an unknown flag prints the disabled variant and exits 0 with the not-found `--loud` line; a disabled flag exits 6; a flag the SDK cannot evaluate falls back with exit 0.
 - Metrics: a successful variant evaluation sends metrics, including the variant count, before exit; a fallback and exit 6 do not wait for metrics.
 
@@ -284,7 +281,7 @@ A fallback exits 0 even when it happens after `check` answered `true`, e.g. beca
 - The variable names become public contract with the first release that has `variant`, so mistakes in the naming rules can only be fixed with a breaking change.
 - Variable names are upper case, so payload keys that differ only in case (`imageTag` and `imagetag`) collide, and camelCase keys run together (`IMAGETAG`). Teams should use snake_case or kebab-case keys in payloads meant for pipelines.
 - The double underscore is unambiguous only because a key containing `__` that would collide is rejected. A payload can still contain such a key if nothing collides with it, which makes the name look nested when it is not.
-- `dotenv` cannot carry multi-line values, so a multi-line string payload falls back silently in the default format. `--loud` reports it, and `--format shell` or `json` carries it.
+- `dotenv` cannot carry multi-line values, so a multi-line string payload falls back silently in the default format. `--loud` reports it, and `--format shell` carries it.
 - Running `check` then `variant` is two runs: two fetches, two registrations and two sets of metrics. If someone turns the flag off between them, `check` says `true` and `variant` exits 6, which fails the step under `set -e`. That is rare and loud rather than wrong, but the two calls are not atomic.
 - Exit 6 breaks the rule from spec 0001 that an evaluated flag always exits 0. It is limited to `variant`, where calling it on a disabled flag means the pipeline skipped its gate.
 - Environment variables are visible to every later step and to any process those steps start. Payloads must not hold secrets, which is already Unleash's advice.
@@ -316,5 +313,6 @@ None at this time.
 # Future possibilities
 
 - A `github` format that writes GitHub's `NAME<<DELIMITER` syntax with a random delimiter, so multi-line values work with `$GITHUB_ENV` and `$GITHUB_OUTPUT` without `--format shell`. Deferred because multi-line string payloads should be rare in pipelines.
+- A `json` format that prints the result as one JSON object, `{"enabled": bool, "variant": string, "payload": {"type": string, "value": any} or null}`, for tools such as `jq`. Left out of the first version because pipelines want environment variables; `<prefix>PAYLOAD` already holds the payload as compact JSON for a tool that needs it.
 - Selecting part of a payload, e.g. `--path image`, to keep variable names short.
 - Several flags in one call, which would make `check` and `variant` atomic for a pipeline.
