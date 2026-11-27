@@ -93,7 +93,8 @@ type CheckOptions struct {
 	Given map[string]int
 }
 
-// checkRequest is a validated CheckOptions with defaults applied.
+// checkRequest is a validated CheckOptions with defaults applied, and the
+// question to ask once the flags are fetched.
 type checkRequest struct {
 	flag    string
 	url     *url.URL
@@ -101,6 +102,9 @@ type checkRequest struct {
 	timeout time.Duration
 	loud    bool
 	context evalContext
+	// ask is the final call of the evaluation. Nil means evaluateFlag, the
+	// check command's question.
+	ask question
 }
 
 // evalContext is the Unleash context a flag is evaluated against. Empty
@@ -135,7 +139,22 @@ type problem struct {
 // the reason the answer fell back to false.
 func (r *Releash) Check(opts CheckOptions) int {
 	req, problems := validateCheck(opts)
+	if code := r.reportProblems("check", problems); code != ExitOK {
+		_, _ = fmt.Fprintln(r.Out, "false")
+		return code
+	}
 
+	out := r.evaluateRequest(req)
+	r.reportOutcome(req, out, "false")
+	_, _ = fmt.Fprintln(r.Out, out.enabled && out.fallback == "")
+	return ExitOK
+}
+
+// reportProblems writes each problem to Err as a "releash: " line, and the
+// pointer to "releash <command> --help" if any is a bad command line. It
+// returns the lowest exit code among the problems, or ExitOK if there are
+// none.
+func (r *Releash) reportProblems(command string, problems []problem) int {
 	code := ExitOK
 	for _, p := range problems {
 		_, _ = fmt.Fprintf(r.Err, "releash: %s\n", p.msg)
@@ -143,29 +162,33 @@ func (r *Releash) Check(opts CheckOptions) int {
 			code = p.code
 		}
 	}
-	if code != ExitOK {
-		if code == ExitUsage {
-			_, _ = fmt.Fprintln(r.Err, "Run 'releash check --help' for usage.")
-		}
-		_, _ = fmt.Fprintln(r.Out, "false")
-		return code
+	if code == ExitUsage {
+		_, _ = fmt.Fprintf(r.Err, "Run 'releash %s --help' for usage.\n", command)
 	}
+	return code
+}
 
+// evaluateRequest answers req with r.evaluate, or evaluate when it is nil.
+func (r *Releash) evaluateRequest(req checkRequest) outcome {
 	eval := r.evaluate
 	if eval == nil {
 		eval = evaluate
 	}
-	out := eval(context.Background(), req)
-	if req.loud {
-		for _, note := range out.notes {
-			_, _ = fmt.Fprintf(r.Err, "releash: %s\n", note)
-		}
-		if out.fallback != "" {
-			_, _ = fmt.Fprintf(r.Err, "releash: %s\n", out.fallback)
-		}
+	return eval(context.Background(), req)
+}
+
+// reportOutcome writes the notes of out under --loud, then the fallback line,
+// which ends by saying the command is returning answer.
+func (r *Releash) reportOutcome(req checkRequest, out outcome, answer string) {
+	if !req.loud {
+		return
 	}
-	_, _ = fmt.Fprintln(r.Out, out.enabled && out.fallback == "")
-	return ExitOK
+	for _, note := range out.notes {
+		_, _ = fmt.Fprintf(r.Err, "releash: %s\n", note)
+	}
+	if out.fallback != "" {
+		_, _ = fmt.Fprintf(r.Err, "releash: %s; returning %s\n", out.fallback, answer)
+	}
 }
 
 // validateCheck returns opts as a checkRequest and every problem in it. The

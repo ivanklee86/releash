@@ -4,7 +4,7 @@ Started 2026-11-27. Status: in progress. Milestone: [M6](../milestones/M6-varian
 
 ## Resume here
 
-Updated 2026-11-27. The spike against Unleash 8.3.1 has run (see [Spike findings](#reference)), and PR 1 is on branch `m6/variables`, waiting for review: the acceptance edits, this plan and the `internal/variant` package. Before PR 2 and PR 3, the user answers the open questions from the spike. The plan is three stacked PRs: the variable and format rules, the `variant` command, and the fixtures with the integration scenarios and README. Then `v0.2.0`. When resuming, start the first step in [Steps](#steps) that is not checked off and whose dependencies are done. Before ending a session, update this section and check off finished steps.
+Updated 2026-11-27. The spike against Unleash 8.3.1 has run (see [Spike findings](#reference)). PR 1 is on branch `m6/variables`, waiting for review: the acceptance edits, this plan and the `internal/variant` package. PR 2 is on branch `m6/command`, stacked on it and also waiting for review: the `variant` command, with the PR 2 decisions below for the user to confirm. Neither is pushed. Next is PR 3, after the user answers the open questions from the spike that are still open. The plan is three stacked PRs: the variable and format rules, the `variant` command, and the fixtures with the integration scenarios and README. Then `v0.2.0`. When resuming, start the first step in [Steps](#steps) that is not checked off and whose dependencies are done. Before ending a session, update this section and check off finished steps.
 
 ## How to work through this plan
 
@@ -20,6 +20,16 @@ Decisions:
 
 - 2026-11-27, the user: merging #26 and asking to start M6 accepts spec 0003 and ADRs 0006 and 0007 as reworked. PR 1 sets them to `accepted`, removes "Proposed, not yet in effect" from ADR 0004's exit 6 row, and sets M6 to `active`.
 - 2026-11-27, PR 1, not covered by spec 0003 and taken as the conservative choice, for the user to confirm in review: every node below the root, containers included, claims its variable name, so `{"a-b": {"c": 1}, "a_b": {"d": 2}}` and `{"a-b": {}, "a_b": 1}` are collisions although no two leaves share a name; `--loud` messages name keys by their JSON Pointer path without the leading `/` (`a/b`, `0/name`); an empty member name normalises to the empty string, giving `<prefix>PAYLOAD__`; only the payload type `json`, in lower case, is flattened; and a carriage return in `dotenv` is unrepresentable like a newline, as spec 0003's "(`\n` or `\r`)" says.
+- 2026-11-27, PR 2, not covered by spec 0003 and taken as the conservative choice, for the user to confirm in review:
+  - The default-stickiness `--loud` warning reads the stickiness the SDK hashes with, as the spike's first open question proposes: the first feature variant's `stickiness`, and for strategy variants the strategy's `stickiness` parameter when it is a string, otherwise the first variant's. It warns when any variant set of the flag uses `default` or an empty stickiness, only for an evaluated variant (not for a fallback or exit 6), and when `--user-id` and `--session-id` are both empty, so `--user-id ""` counts as not set. Spec 0003's "Unleash integration" bullet still says the variants' own stickiness; amending it is left to the user, with the other spike questions.
+  - The warning reads `releash: flag "<flag>" assigns variants by default stickiness, but neither --user-id nor --session-id is set, so the variant can differ between runs; pass --user-id, e.g. the repository name, to keep it sticky`.
+  - Every `--loud` fallback line of `variant` ends in `; returning disabled variant`, as spec 0003's payload example does, where `check`'s end in `; returning false`. The reasons are otherwise those of spec 0001, word for word.
+  - The exit 6 line is written after any `--loud` notes (address, register), which `variant` keeps for exit 6 as `check` does for an evaluated answer.
+  - An empty flag name counts as missing for the fallback's default prefix, as it does for `check`'s "missing flag name", so `releash variant ""` exits 2 with empty stdout unless `--prefix` is given.
+  - `--format` and `--prefix` are string arrays, so validation sees every value. Each invalid value is reported (`invalid --format "x": must be one of "dotenv" or "shell"`, `invalid --prefix "x": must match ^[A-Z][A-Z0-9_]*$`), and a repeat is reported as `--format given 2 times; give it at most once`, like the other releash options. Format names are case-sensitive.
+  - The raw-argument scan treats an unknown option as taking no value, so it goes on past it; it covers options before the command too, so `releash --format shell variant x` prints the fallback as `export` lines; and arguments after `--` count as flag names for the default prefix.
+  - The flag is looked up in `ListFeatures` after `GetVariant`, so the SDK counts the call for an unknown flag in its buffer, as `IsEnabled` does for `check`; releash does not wait for that send.
+  - `variant` help reuses `check`'s option text, including `--current-time`'s "(default: the time of the check)"; only `--loud` has its own text.
 
 Spike findings, 2026-11-27, against Unleash 8.3.1 at `localhost:4242` with `unleash-go-sdk` v6.5.1. Every flag, segment and context field the spike created was archived or deleted afterwards. Three findings differ from spec 0003 or this plan; they are marked "differs".
 
@@ -47,18 +57,21 @@ Open questions from the spike, for the user before PR 2 and PR 3 (none affects P
 - Spec 0003's "Keep the variant sticky" and its stickiness bullet should add the `remoteAddress` step, and say that without `--user-id` runs stick to the runner's address rather than being random.
 - Spec 0003 says a custom stickiness property must exist as a context field with stickiness enabled. Evaluation does not need it; only the Unleash UI does. Proposed: keep the advice, worded as what the UI needs.
 - `seed.py` and `integration.CreateFlag` write feature variants through `variants-batch` (finding 1); the milestone's risk section names the per-environment endpoint.
+- Found while testing PR 2, for information: SDK v6.5.1 panics (`interface conversion: interface {} is nil, not string`) when it evaluates a `flexibleRollout` strategy that has no `stickiness` parameter, for `check` and `variant` alike. The panic is on releash's goroutine, so `run` recovers it as exit 1 with the fallback. Unleash always stores the parameter, so only a hand-written response can trigger it; the unit tests use a `default` strategy with a `groupId` for strategy variants without a stickiness parameter.
 
 ## Steps
 
 ### PR 1: variable names and formats
 
 - [x] Branch `m6/variables`.
+- [x] Implemented: `f33a999`, `ee0447a` and the review fixes in `6d28595`, with `task`, `prek run --all-files` and `task go:test-integration` passing. Waiting for the user's `/ship`.
 - Contents: the acceptance edits above; this plan in `docs/agents/plans`; a new package (e.g. `internal/variant`) that turns an evaluated result (enabled, variant name, payload type and value) into the ordered variables of spec 0003 and renders them as `dotenv` or `shell`: prefix validation and the default prefix from a flag name, normalisation per Unicode code point, flattening with `__` and indices, number text preserved, `null` as empty, empty containers and scalar roots, every kind of collision, invalid JSON, unrepresentable values per format, and the fallback (disabled variant) output. Exhaustive table-driven unit tests, including a test that `eval` of `shell` output in `/bin/sh` reproduces values with `'`, `$`, backticks, `\`, spaces and newlines. No network, no CLI. `docs/agents/internals.md`.
 - Milestone criteria: flattening, normalisation, collisions, formats.
 
 ### PR 2: the variant command
 
-- [ ] Branch `m6/command`, stacked on `m6/variables`.
+- [x] Branch `m6/command`, stacked on `m6/variables`.
+- [x] Implemented, with `task`, `prek run --all-files` and `task go:test-integration` passing; the existing `check` tests pass unchanged. `evaluate` takes the final call as a `question` in the request, the variant command lives in `variant.go` and `internal/releash/variant.go`, and the decisions above are recorded. Waiting for review, after PR 1.
 - Contents: exit code 6 in `internal/releash`; `evaluate` generalised so `check` and `variant` share one path (storage, timeout, register deadline, readiness, error sorting, fallbacks, `remoteAddress`, metrics wait) and differ only in the final call; `variant` calls `GetVariant` with no fallback, tells unknown from disabled through the fetched flags, lets an SDK evaluation error take precedence over exit 6, skips the metrics wait for fallbacks and exit 6, and emits the default-stickiness `--loud` warning. `main.go`: the `variant` command with `--format` and `--prefix` plus every `check` option, sharing their definitions, validation and `countedValue`; options before the command rejected for both commands; the three help headings and plain `--help` and `--version`; the raw-argument scan for `--format` and `--prefix` (reading option values as pflag does) that decides the fallback's format and prefix for every exit 1 to 5 and recovered panics; empty stdout where the spec says so. Unit tests against fake Unleash servers for every row of spec 0003's test plan that needs no real Unleash, and the root-command tests for the CLI rules. `docs/agents/internals.md`.
 - Milestone criteria: help, shared options, exit 6, unknown versus disabled, fallbacks, command errors, the scan, metrics, stickiness warning.
 

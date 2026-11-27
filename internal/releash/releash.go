@@ -1,6 +1,7 @@
 // Package releash holds the logic behind the releash CLI. The cobra wiring in
-// package main maps options into a Config or CheckOptions and calls a Releash;
-// everything the CLI does lives here so tests can drive it without a process.
+// package main maps options into a Config, CheckOptions or VariantOptions
+// and calls a Releash; everything the CLI does lives here so tests can drive
+// it without a process.
 package releash
 
 import (
@@ -25,10 +26,14 @@ const (
 	ExitInvalid = 4
 	// ExitDuplicate means a context field or property was set more than once.
 	ExitDuplicate = 5
+	// ExitDisabled means releash variant evaluated the flag and found it
+	// disabled for the context, so the pipeline skipped its releash check
+	// gate (ADR 0007). Check never returns it.
+	ExitDisabled = 6
 )
 
 // Config holds settings shared by every releash command. It has no fields
-// yet: Check takes its settings per call in CheckOptions.
+// yet: Check and Variant take their settings per call.
 type Config struct{}
 
 // Releash holds the configuration and output writers that releash commands
@@ -43,8 +48,9 @@ type Releash struct {
 	// Err receives errors and diagnostics. It defaults to os.Stderr.
 	Err io.Writer
 
-	// evaluate answers a validated check. Nil means evaluate, which asks
-	// Unleash; tests of validation replace it so they need no server.
+	// evaluate answers a validated check or variant. Nil means evaluate,
+	// which asks Unleash; tests of validation replace it so they need no
+	// server.
 	evaluate evaluator
 }
 
