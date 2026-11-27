@@ -1,0 +1,101 @@
+//go:build integration
+
+// Package integration holds helpers for the integration tests, which run
+// against the local Unleash stack from docker-compose.yaml. Start the stack
+// with `task services` and run the tests with `task go:test-integration`.
+//
+// Every file is behind the integration build tag, so plain `go test ./...`
+// neither compiles nor runs any of it.
+package integration
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"os"
+	"testing"
+	"time"
+)
+
+// Environment names of the local stack. Each has its own client token.
+const (
+	Development = "development"
+	Production  = "production"
+)
+
+// Environments lists every environment of the local stack.
+var Environments = []string{Development, Production}
+
+// Defaults are the fixed dev-only values from docker-compose.yaml. They are
+// not secrets and only work on the local stack.
+const (
+	DefaultURL              = "http://localhost:4242"
+	DefaultAdminToken       = "*:*.releash-dev-admin-not-a-secret"
+	DefaultDevelopmentToken = "default:development.releash-dev-not-a-secret"
+	DefaultProductionToken  = "default:production.releash-dev-not-a-secret"
+)
+
+// URL returns the base URL of Unleash from UNLEASH_URL, or DefaultURL when
+// the variable is unset or empty.
+func URL() string {
+	return envOr("UNLEASH_URL", DefaultURL)
+}
+
+// AdminToken returns the Admin API token from UNLEASH_ADMIN_TOKEN, or
+// DefaultAdminToken when the variable is unset or empty.
+func AdminToken() string {
+	return envOr("UNLEASH_ADMIN_TOKEN", DefaultAdminToken)
+}
+
+// ClientToken returns the client (backend) token for env, which must be
+// Development or Production. It reads UNLEASH_DEVELOPMENT_TOKEN or
+// UNLEASH_PRODUCTION_TOKEN and falls back to the compose default when the
+// variable is unset or empty. It fails the test for any other env.
+func ClientToken(t testing.TB, env string) string {
+	t.Helper()
+	switch env {
+	case Development:
+		return envOr("UNLEASH_DEVELOPMENT_TOKEN", DefaultDevelopmentToken)
+	case Production:
+		return envOr("UNLEASH_PRODUCTION_TOKEN", DefaultProductionToken)
+	default:
+		t.Fatalf("no client token for environment %q; want one of %v", env, Environments)
+		return ""
+	}
+}
+
+// RequireUnleash fails the test unless Unleash answers its health check at
+// URL within a few seconds. Call it first in every test that talks to the
+// stack, so a stopped stack gives one clear message instead of a timeout.
+func RequireUnleash(t testing.TB) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+
+	if err := checkHealth(ctx, URL()); err != nil {
+		t.Fatalf("Unleash is not reachable at %s: %v\nStart the local stack with `task services`.", URL(), err)
+	}
+}
+
+func checkHealth(ctx context.Context, baseURL string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/health", nil)
+	if err != nil {
+		return err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("GET /health returned %s", resp.Status)
+	}
+	return nil
+}
+
+func envOr(name, fallback string) string {
+	if v := os.Getenv(name); v != "" {
+		return v
+	}
+	return fallback
+}

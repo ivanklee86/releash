@@ -19,3 +19,8 @@ issues:
   # Report every finding, not golangci-lint's default of 3 identical ones per linter.
   max-issues-per-linter: 0
   max-same-issues: 0
+
+run:
+  # Lint the integration tests and their helpers too.
+  build-tags:
+    - integration
