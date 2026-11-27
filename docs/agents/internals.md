@@ -4,7 +4,7 @@ How the releash repository is organised. Keep this up to date as the repository 
 
 ## Status
 
-M1 ([milestone](milestones/M1-skeleton-mvp.md), [plan](plans/2026-11-27-m1-skeleton-mvp.md)) is in progress. releash builds and prints help and its version. It has no commands yet: `check` arrives in M3 and the Unleash SDK in M4.
+M1 ([milestone](milestones/M1-skeleton-mvp.md), [plan](plans/2026-11-27-m1-skeleton-mvp.md)) is done. releash builds and prints help and its version. It has no commands yet: `check` arrives in M3 and the Unleash SDK in M4.
 
 ## Documentation layout
 

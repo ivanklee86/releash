@@ -1,5 +1,5 @@
 ---
-status: active  # planned | active | done | dropped
+status: done  # planned | active | done | dropped
 ---
 
 # M1: Skeleton MVP
@@ -27,7 +27,7 @@ Specs (in `docs/specs`) delivered by this milestone. Check each off when it is i
 - `go build ./...` and `go test ./...` pass, with tests covering the four behaviours above.
 - `Taskfile.yaml` includes `tasks/go.yaml`, following argonap, with `install`, `install-ci`, `fmt`, `lint`, `build` and `test`. `task` with no arguments runs format, lint, build and test.
 - golangci-lint, pinned to the version in the devcontainer base image, runs with an explicit `.golangci.yml` (argonap's `standard` linter set, plus the `gofmt` and `goimports` formatters required by AGENTS.md), and the code passes it.
-- `.github/workflows/ci.yaml` follows argonap's: least-privilege `permissions`, PR runs cancelled when superseded, and `lint` (gofmt check, `task go:lint`, `task go:build`) and `test` (`task go:test`) jobs. Task is installed through a copy of argonap's `.github/actions/setup-task` composite action at a pinned version, and Go tool binaries are cached. CI passes on the M1 pull requests.
+- `.github/workflows/ci.yaml` follows argonap's: least-privilege `permissions`, PR runs cancelled when superseded, and `lint` (gofmt check, `task go:lint`, `task go:build`) and `test` (`task go:test`) jobs. Task is installed through a copy of argonap's `.github/actions/setup-task` composite action at a pinned version, and Go tool binaries are cached. CI passes on `main` and on every M1 pull request opened after the workflow was added. Earlier M1 pull requests were merged before CI existed, and those later runs cover their code.
 - `docs/agents/internals.md` describes the layout.
 
 ## Out of scope
