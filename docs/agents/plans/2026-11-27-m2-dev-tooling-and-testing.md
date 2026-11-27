@@ -4,7 +4,7 @@ Started 2026-11-27. Status: in progress. Milestone: [M2](../milestones/M2-dev-to
 
 ## Resume here
 
-Updated 2026-11-27. PR 1 (quality and Renovate) and PR 2 (compose stack) are being built in parallel, and PR 3 (integration test scaffolding) is stacked on PR 2. When resuming, start the first PR in [Steps](#steps) that is not checked off and whose dependencies are merged. Before ending a session, update this section and check off finished steps.
+Updated 2026-11-27. PRs 1–3 were built in parallel worktrees and reviewed, then rebased into one linear stack, because PR 1 and PR 2 both edit `docs/agents/internals.md`: `m2/quality` (PR 1), then `m2/compose` (PR 2), then `m2/integration-tests` (PR 3). All three are committed locally and pass `task`, `prek run --all-files` and `task go:test-ci` against the stack. Next: the user ships them in order, and each later branch is rebased onto `main` after the one before it merges. PR 4 (CI jobs) starts once PR 3 merges. When resuming, start the first PR in [Steps](#steps) that is not checked off and whose dependencies are merged. Before ending a session, update this section and check off finished steps.
 
 ## How to work through this plan
 
@@ -12,7 +12,7 @@ Updated 2026-11-27. PR 1 (quality and Renovate) and PR 2 (compose stack) are bei
 - Branch from an up-to-date `main`, named as in the step. PR 3 may be stacked on PR 2's branch before PR 2 merges.
 - Before handing off, run `task` and `prek run --all-files`, plus what the step's checks list.
 - The user runs `/ship` to commit, push, open the PR and watch it. Claude never merges. The user's merge is the checkpoint before a step that depends on it.
-- PRs 1 and 2 are independent and may be built in parallel in separate git worktrees. PR 3 needs PR 2. PR 4 needs PRs 1 and 3.
+- PRs 1 and 2 are independent and may be built in parallel in separate git worktrees, but they are merged in order, because both edit `docs/agents/internals.md`. PR 3 needs PR 2. PR 4 needs PRs 1 and 3.
 - Only PR 1 edits this plan while PRs 1–3 are open, so parallel branches do not conflict on it. Later PRs update it after rebasing.
 - If a step uncovers a decision that is not covered by the specs, ADRs or milestone, stop and ask instead of choosing. Record the answer here, or in an ADR if it has real trade-offs.
 
