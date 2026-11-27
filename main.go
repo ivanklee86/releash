@@ -172,6 +172,14 @@ func NewRootCommand(r *releash.Releash, version string) *cobra.Command {
 	cmd.SetVersionTemplate("releash version {{.Version}}\n")
 	cmd.AddCommand(newCheckCommand(r, version))
 	plainHelpAndVersion(cmd)
+	// cobra would add its help command only when it runs, too late for
+	// plainHelpAndVersion. Adding it here makes cobra reuse this one.
+	cmd.InitDefaultHelpCmd()
+	for _, sub := range cmd.Commands() {
+		if sub.Name() == "help" {
+			plainHelpAndVersion(sub)
+		}
+	}
 	return cmd
 }
 
