@@ -19,7 +19,7 @@ Specs (in `docs/specs`) delivered by this milestone. Check each off when it is i
 ### Local Unleash
 
 - `docker-compose.yaml` at the repository root runs Postgres and the Unleash server, both at pinned image versions, with Unleash on `localhost:4242`.
-- API tokens exist as soon as the stack is up, created by the server's `INIT_ADMIN_API_TOKENS` and `INIT_CLIENT_API_TOKENS` settings: one admin token, and one client token for each of the `development` and `production` environments. The tokens are fixed, dev-only values committed to the repository and documented as not secret.
+- API tokens exist as soon as the stack is up, created by the server's `INIT_ADMIN_API_TOKENS` and `INIT_BACKEND_API_TOKENS` settings (`INIT_BACKEND_API_TOKENS` replaces the deprecated `INIT_CLIENT_API_TOKENS`): one admin token, and one client token for each of the `development` and `production` environments. The tokens are fixed, dev-only values committed to the repository and documented as not secret.
 - Fixture flags exist as soon as the stack is up, created by a one-shot seed service in the compose file. It waits for Unleash to be healthy and creates flags through the Admin API. Seeding is idempotent, so restarting the stack or re-running the seed doesn't fail or duplicate anything.
 - Fixture flags are defined in one file next to the seed script and named for what they test. At minimum:
   - an enabled flag and a disabled flag

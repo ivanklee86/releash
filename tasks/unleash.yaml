@@ -1,0 +1,31 @@
+# https://taskfile.dev
+# Included by the root Taskfile with flatten, so these tasks have no prefix.
+version: '3'
+
+vars:
+  UNLEASH_URL: http://localhost:4242/api
+  # Fixed dev-only token from docker-compose.yaml; not a secret.
+  UNLEASH_PRODUCTION_TOKEN: default:production.releash-dev-not-a-secret
+
+tasks:
+  services:
+    desc: Start the local Unleash stack and wait until the fixture flags are seeded.
+    cmds:
+      # The seed runs with `run`, not `up --wait`: `up --wait` counts an exited one-shot service as a failure, and
+      # on a running stack it would not wait for the seed to finish. `run` returns the seed's own exit code.
+      - docker compose up --detach --wait unleash
+      - docker compose run --rm seed
+
+  services:down:
+    desc: Stop the local Unleash stack and delete its data.
+    cmds:
+      - docker compose down --volumes --remove-orphans
+
+  releash:
+    desc: Build releash and run it against the local stack with the production client token, e.g. task releash -- --help.
+    deps:
+      # Flattened into the root Taskfile, so the go include is referenced without a leading colon.
+      - task: go:build
+    cmds:
+      # Set on the command line, because a task's env: loses to the same variable already exported in the shell.
+      - UNLEASH_URL='{{.UNLEASH_URL}}' UNLEASH_API_TOKEN='{{.UNLEASH_PRODUCTION_TOKEN}}' ./bin/releash {{.CLI_ARGS}}

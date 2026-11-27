@@ -4,7 +4,7 @@ Started 2026-11-27. Status: in progress. Milestone: [M2](../milestones/M2-dev-to
 
 ## Resume here
 
-Updated 2026-11-27. PRs 1–3 were built in parallel worktrees and reviewed, then rebased into one linear stack, because PR 1 and PR 2 both edit `docs/agents/internals.md`: `m2/quality` (PR 1), then `m2/compose` (PR 2), then `m2/integration-tests` (PR 3). All three are committed locally and pass `task`, `prek run --all-files` and `task go:test-ci` against the stack. Next: the user ships them in order, and each later branch is rebased onto `main` after the one before it merges. PR 4 (CI jobs) starts once PR 3 merges. When resuming, start the first PR in [Steps](#steps) that is not checked off and whose dependencies are merged. Before ending a session, update this section and check off finished steps.
+Updated 2026-11-27. PR 1 is merged as #9. PRs 2 and 3 are committed locally as a stack on `main`: `m2/compose`, then `m2/integration-tests`. They were built in parallel worktrees, reviewed, and pass `task`, `prek run --all-files` and `task go:test-ci` against the stack. Next: the user ships `m2/compose`, then `m2/integration-tests` once it merges (rebased onto `main` first). PR 4 (CI jobs) starts once PR 3 merges. When resuming, start the first PR in [Steps](#steps) that is not checked off and whose dependencies are merged. Before ending a session, update this section and check off finished steps.
 
 ## How to work through this plan
 
@@ -52,7 +52,7 @@ Pinned versions, checked 2026-11-27. Check for newer releases at the start of ea
 
 ### PR 1: quality hooks and Renovate
 
-- [ ] Branch `m2/quality`.
+- [x] Branch `m2/quality`. Merged as #9. Its review moved the Go version, the devcontainer base image and golangci-lint into a `go-toolchain` Renovate group that never automerges.
 - Contents: this plan; `.pre-commit-config.yaml` gains `markdownlint-cli2` and `renovate-config-validator`, as in argonap; `.markdownlint-cli2.yaml` (MD013 off, MD024 siblings only); markdown fixes so the hooks pass on all files; `renovate.json` as the milestone's Renovate section describes, adapted from argonap's (runs on Fridays, `minimumReleaseAge` 5 days, groups `go`, `ci` and `unleash`, the devcontainer manager disabled, automerge rules, regex managers for `go install` pins and `# <datasource>/<depName>` comments, digest pinning for compose images and the devcontainer base image); `docs/agents/internals.md` sections for prek and Renovate.
 - Checks: `prek run --all-files` passes, including the Renovate validator.
 - Milestone criteria: Renovate; prek hooks pass on all files.
@@ -61,7 +61,7 @@ Pinned versions, checked 2026-11-27. Check for newer releases at the start of ea
 ### PR 2: local Unleash stack
 
 - [ ] Branch `m2/compose`.
-- Contents: `docker-compose.yaml` (Postgres, Unleash on `localhost:4242`, a one-shot `seed` service, and a `ready` service that `depends_on` the seed with `condition: service_completed_successfully`); `unleash/seed.py` and `unleash/fixtures.json`; `tasks/unleash.yaml` with `services`, `services:down` and `releash`; the root Taskfile includes it; `.env.example`; `docs/agents/internals.md` sections for the stack and the fixture flags.
+- Contents: `docker-compose.yaml` (Postgres, Unleash on `localhost:4242`, and a one-shot `seed` service that `task services` runs with `docker compose run --rm seed` once Unleash is healthy; its review replaced a `ready` service, because `up --wait` on a running stack did not wait for the seed again); `unleash/seed.py` and `unleash/fixtures.json`; `tasks/unleash.yaml` with `services`, `services:down` and `releash`; the root Taskfile includes it; `.env.example`; `docs/agents/internals.md` sections for the stack and the fixture flags.
 - Fixture flags: everything the milestone lists. Check whether the pinned open-source image supports a second project. If it doesn't, drop that fixture and add the note to spec 0001 that the milestone asks for.
 - Checks: `task services` exits 0 from a clean state and again on a running stack; `task services:down` removes the volumes; re-running the seed is a no-op; the Client API returns the expected flags for each client token (checked by hand with `curl`).
 - Milestone criteria: Local Unleash; `task services`, `task services:down`, `task releash`, `.env.example`.
