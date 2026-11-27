@@ -239,7 +239,8 @@ func validateCheck(opts CheckOptions) (checkRequest, []problem) {
 		if err != nil || addr.Zone() != "" {
 			report(ExitInvalid, "invalid --%s %q: must be an IPv4 or IPv6 address", OptionRemoteAddress, opts.RemoteAddress)
 		} else {
-			req.context.remoteAddress = addr.String()
+			// Unmapped, so it reads the same as a detected address for that host.
+			req.context.remoteAddress = addr.Unmap().String()
 		}
 	}
 	if given(OptionCurrentTime) {

@@ -38,6 +38,7 @@ import (
 //     under --loud
 //   - a register request answered with 300 counts as registered, as the SDK
 //     counts it
+//   - a feature fetch caught in a redirect loop falls back at once
 //   - a register request that fails after redirect hops does not change the
 //     answer
 //   - a register request that never finishes, directly or after a redirect,
@@ -579,4 +580,63 @@ func TestCheckFetchesTheFlagsOnlyOnce(t *testing.T) {
 	mu.Lock()
 	defer mu.Unlock()
 	assert.Equal(t, []string{"86400000"}, intervals, "the refresh interval the SDK announces, in ms")
+}
+
+func TestCheckIgnoresARegistrationThatFailsOnAHopTheFetchShares(t *testing.T) {
+	// A proxy sends every Client API request through /forward. The fetch is
+	// served there; the register request has its connection closed there, so
+	// its error names /forward, a path the fetch also went through.
+	var srv *httptest.Server
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/forward" && r.Method == http.MethodGet:
+			serve(http.StatusOK, featuresJSON(enabledFlag))(w, r)
+		case r.URL.Path == "/forward":
+			_, _ = io.Copy(io.Discard, r.Body)
+			conn, _, err := w.(http.Hijacker).Hijack()
+			if err == nil {
+				_ = conn.Close()
+			}
+		case r.URL.Path == "/api/client/features" || r.URL.Path == "/api/client/register":
+			_, _ = io.Copy(io.Discard, r.Body)
+			http.Redirect(w, r, srv.URL+"/forward", http.StatusTemporaryRedirect)
+		default:
+			w.WriteHeader(http.StatusAccepted)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	for range 10 {
+		stdout, stderr, code := runCheck(t, srv.URL+"/api", "on", true)
+
+		assert.Equal(t, ExitOK, code)
+		assert.Equal(t, "true\n", stdout)
+		assert.NotContains(t, stderr, "returning false")
+	}
+}
+
+func TestCheckFallsBackAtOnceWhenTheFetchRedirectsInALoop(t *testing.T) {
+	// http.Client gives up after ten redirects with an error that names a hop
+	// only the feature fetch took, with no transport error behind it.
+	var srv *httptest.Server
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/client/features", "/b":
+			http.Redirect(w, r, srv.URL+"/a", http.StatusTemporaryRedirect)
+		case "/a":
+			http.Redirect(w, r, srv.URL+"/b", http.StatusTemporaryRedirect)
+		default:
+			w.WriteHeader(http.StatusAccepted)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	start := time.Now()
+	stdout, stderr, code := runCheck(t, srv.URL+"/api", "on", true, set(OptionTimeout, timeout, "2s"))
+	elapsed := time.Since(start)
+
+	assert.Equal(t, ExitOK, code)
+	assert.Equal(t, "false\n", stdout)
+	assert.Equal(t, "releash: unleash answered the feature fetch with HTTP 307; returning false\n", stderr)
+	assert.Less(t, elapsed, time.Second, "falls back without waiting for --timeout")
 }

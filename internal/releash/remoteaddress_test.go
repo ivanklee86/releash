@@ -5,9 +5,11 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // Cases for the automatic remoteAddress from spec 0001:
@@ -37,7 +39,7 @@ func TestCheckUsesTheLocalAddressAsRemoteAddress(t *testing.T) {
 		byAddress("v6only", "::1"),
 		byAddress("elsewhere", "203.0.113.7"),
 	))
-	url := fakeUnleash(t, features, nil)
+	url := serveOnLoopback(t, features, "127.0.0.1:0") + "/api"
 
 	tests := []struct {
 		name       string
@@ -63,7 +65,7 @@ func TestCheckUsesTheLocalAddressAsRemoteAddress(t *testing.T) {
 	}
 
 	t.Run("IPv6", func(t *testing.T) {
-		v6 := serveOnIPv6Loopback(t, features)
+		v6 := serveOnLoopback(t, features, "[::1]:0")
 		for flag, want := range map[string]string{"v6only": "true\n", "v4only": "false\n"} {
 			stdout, stderr, code := runCheck(t, v6+"/api", flag, true)
 			assert.Equal(t, want, stdout, flag)
@@ -76,16 +78,20 @@ func TestCheckUsesTheLocalAddressAsRemoteAddress(t *testing.T) {
 // A redirect may send the fetch to a server with another path and address;
 // the flags come over the connection to that server, so its address counts.
 func TestCheckUsesTheAddressOfTheRedirectTarget(t *testing.T) {
-	mirror := serveOnIPv6Loopback(t, func(w http.ResponseWriter, r *http.Request) {
+	mirror := serveOnLoopback(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/mirror/flags" {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
 		serve(http.StatusOK, featuresJSON(byAddress("v6only", "::1"), byAddress("v4only", "127.0.0.1")))(w, r)
-	})
-	url := fakeUnleash(t, func(w http.ResponseWriter, r *http.Request) {
+	}, "[::1]:0")
+	url := serveOnLoopback(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/client/features" {
+			w.WriteHeader(http.StatusAccepted)
+			return
+		}
 		http.Redirect(w, r, mirror+"/mirror/flags", http.StatusTemporaryRedirect)
-	}, nil)
+	}, "127.0.0.1:0") + "/api"
 
 	for flag, want := range map[string]string{"v6only": "true\n", "v4only": "false\n"} {
 		stdout, stderr, code := runCheck(t, url, flag, true)
@@ -95,14 +101,16 @@ func TestCheckUsesTheAddressOfTheRedirectTarget(t *testing.T) {
 	}
 }
 
-// serveOnIPv6Loopback serves handler on [::1] and returns its URL. It skips
-// the test when the host has no IPv6 loopback.
-func serveOnIPv6Loopback(t *testing.T, handler http.HandlerFunc) string {
+// serveOnLoopback serves handler on addr, a loopback address with port 0,
+// and returns its URL. It skips the test when addr is IPv6 and the host has
+// no IPv6 loopback, and fails it when the host cannot listen on IPv4.
+func serveOnLoopback(t *testing.T, handler http.HandlerFunc, addr string) string {
 	t.Helper()
-	ln, err := net.Listen("tcp", "[::1]:0")
-	if err != nil {
-		t.Skipf("no IPv6 loopback: %v", err)
+	ln, err := net.Listen("tcp", addr)
+	if err != nil && strings.HasPrefix(addr, "[") {
+		t.Skipf("cannot listen on %s: %v", addr, err)
 	}
+	require.NoError(t, err, "listening on %s", addr)
 	srv := httptest.NewUnstartedServer(handler)
 	_ = srv.Listener.Close()
 	srv.Listener = ln

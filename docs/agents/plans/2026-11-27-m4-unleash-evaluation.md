@@ -1,10 +1,10 @@
 # Plan: M4 Unleash evaluation
 
-Started 2026-11-27. Status: in progress. Milestone: [M4](../milestones/M4-unleash-evaluation.md).
+Started 2026-11-27. Status: done. Milestone: [M4](../milestones/M4-unleash-evaluation.md).
 
 ## Resume here
 
-Updated 2026-11-27. A spike on the v6 SDK ran first (findings below). PR 1 (evaluation, #16) and PR 2 (usage metrics, #17) are merged; their review fixes, which the merges left out, are the first commit of PR 3. PR 3 (automatic `remoteAddress`) is on `m4/remote-address`, rebased onto `main`, with its review findings fixed. Next: the user runs `/ship` for PR 3, then the close-out. When resuming, start the first PR in [Steps](#steps) that is not checked off and whose dependencies are merged. Before ending a session, update this section and check off finished steps.
+Updated 2026-11-27. M4 is done: PR 1 (evaluation, #16), PR 2 (usage metrics, #17) and PR 3 (automatic `remoteAddress`, #18) are merged. The review fixes for each, which the merges left out, landed in the next PR, and those for #18 in the close-out PR. Every exit criterion holds, M4 is `done` and spec 0001 is `implemented`. Nothing remains in this plan; M5 (first release) is next.
 
 Decisions made while building PR 1, within the ones below:
 
@@ -53,7 +53,7 @@ The spike ran the v6.5.1 SDK against the local stack and fake servers on 2026-11
 
 ### PR 1: evaluation
 
-- [x] Branch `m4/evaluate`. Merged.
+- [x] Branch `m4/evaluate`. Merged as #16.
 - Contents: the M3 close-out (M3 to `done`, its scope ticked, the M3 plan's status); this plan; spec 0001 and the M4 milestone reworded for v6; the SDK in `go.mod`; `internal/releash` evaluates the flag through the SDK with in-memory storage only, an HTTP client bounded by `--timeout`, evaluation only after the first successful fetch, an immediate fallback when that fetch fails, unknown-flag detection, and one `--loud` line per fallback reason; register errors only under `--loud`; the temporary M3 `--loud` line removed; every context option reaching evaluation; the M4 integration scenarios except metrics and automatic `remoteAddress` filled in; `docs/agents/internals.md`.
 - Milestone criteria: SDK, true/false, context, `--current-time` default, fallbacks, `--loud`, no stale state, M3 message gone.
 
@@ -71,7 +71,7 @@ The spike ran the v6.5.1 SDK against the local stack and fake servers on 2026-11
 
 ### PR 3: automatic remoteAddress
 
-- [x] Branch `m4/remote-address`, stacked on `m4/evaluate`. Implemented and committed with its review findings fixed, not yet pushed; `task`, `prek run --all-files` and `task go:test-integration` pass locally.
+- [x] Branch `m4/remote-address`, stacked on `m4/evaluate`. Merged as #18.
 - Contents: without `--remote-address`, the local address of releash's connection to Unleash becomes `remoteAddress`, taken from the SDK's HTTP client; `--remote-address` overrides it; when no address can be found, `--loud` says so and the result does not change; the help text for `--remote-address` and `--current-time` names their defaults; integration tests.
 - How it was built: the new `internal/releash/remoteaddress.go` holds a `localAddressTransport` that wraps the cloned `http.DefaultTransport` underneath `boundedTransport` and traces with `httptrace` `GotConn` only `/client/features` requests and their redirect hops, whatever path a hop has, so the address is that of the connection that served the flags (the last hop of a redirect). The change to the SDK client setup in `evaluate` is the one wrapped transport and the `withRemoteAddress` call after a successful fetch, to keep the rebase against PR 2 small. The address is reduced to a plain IP (no port or zone, IPv4-mapped IPv6 read as IPv4). Behind an HTTP proxy it is the address of the connection to the proxy. The `--loud` note is `releash: could not find the local address of the connection to unleash; remoteAddress is unset`, given only when the fetch succeeded and `--remote-address` was not given.
 - Tests: unit tests against loopback fake servers over IPv4 and IPv6. A check over TCP always finds an address, so the "no address" note is unit-tested on `withRemoteAddress` only. The integration scenarios use `ip-allowlist` for the runner's address and a scenario flag listing only `203.0.113.7` (RFC 5737, never the runner's) to show the detected address is used and that `--remote-address` overrides it both ways.
@@ -79,4 +79,4 @@ The spike ran the v6.5.1 SDK against the local stack and fake servers on 2026-11
 
 ### Close out
 
-- [ ] Every M4 exit criterion holds. Set M4 to `done`, spec 0001 to `implemented`, and update this plan's status.
+- [x] Every M4 exit criterion holds. Set M4 to `done`, spec 0001 to `implemented`, and update this plan's status.

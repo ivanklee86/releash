@@ -1,5 +1,5 @@
 ---
-status: active  # planned | active | done | dropped
+status: done  # planned | active | done | dropped
 ---
 
 # M4: Unleash evaluation
@@ -12,7 +12,7 @@ status: active  # planned | active | done | dropped
 
 Specs (in `docs/specs`) delivered by this milestone. Check each off when it is implemented.
 
-- [ ] [0001-rollout-decisions](../../specs/0001-rollout-decisions.md), remaining sections: "Fallback to `false`", "Automatic values", "Unleash integration", and the full test plan.
+- [x] [0001-rollout-decisions](../../specs/0001-rollout-decisions.md), remaining sections: "Fallback to `false`", "Automatic values", "Unleash integration", and the full test plan.
 
 ## Exit criteria
 
