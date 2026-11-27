@@ -46,10 +46,23 @@ Specs (in `docs/specs`) delivered by this milestone. Check each off when it is i
 - Integration tests are written as user-facing scenarios named after pipeline usage, e.g. "deploy gate opens for an enabled flag", "gate stays closed when the token is rejected", "region-gated rollout opens only for eu". M2 adds the scenario list as test stubs, plus helpers for a fixture-flag catalog, client and admin tokens, and a fake HTTP server that accepts connections and never responds. M3 and M4 fill the scenarios in.
 - M2 itself has one passing integration test: a smoke test that fetches the fixture flags through the Client API with each client token and checks that the expected flags are visible.
 
+### Renovate
+
+- `renovate.json` follows argonap's: it extends `config:recommended`, runs on a weekly schedule, and waits `minimumReleaseAge` (5 days) before proposing a release.
+- It keeps every pinned version in the repository current:
+  - Go modules and the Go version in `go.mod`
+  - Go tools installed with `go install <pkg>@<version>` in `tasks/go.yaml`, through a regex manager
+  - Docker images in `docker-compose.yaml` (Unleash, Postgres, the seed image), pinned by digest
+  - the devcontainer base image, pinned by digest in `.devcontainer/Dockerfile`, and devcontainer features
+  - GitHub Actions, and tool versions in workflows and the `setup-task` action marked with `# <datasource>/<depName>` comments, as argonap does
+  - pre-commit hooks in `.pre-commit-config.yaml`
+- Updates are grouped as in argonap: `go` (modules, Go version, base image), `ci` (actions, hooks, CI tools), `devcontainer`, and a new `unleash` group for the Unleash server image together with the Go SDK. The server image and the seed script are upgraded together (see Risks).
+- Minor, patch, pin and digest updates automerge once CI passes. Major updates of Go modules, Go and the base image need a human, and so do Unleash server and SDK updates of any size, because the integration tests are the only guard against behaviour changes there.
+- The Renovate config hook in prek validates `renovate.json`.
+
 ### Quality and CI
 
 - prek hooks (whitespace, YAML, gofmt, markdownlint, Renovate config) pass on all files.
-- Renovate keeps every pinned version current: Go modules, Go tools in Task files, Docker images in `docker-compose.yaml`, GitHub Actions and pre-commit hooks.
 - M1's `ci.yaml` gains argonap's remaining CI jobs and steps:
   - a `pre-commit` job running the prek hooks through `j178/prek-action` at a pinned version
   - an `integration` job that starts the compose stack with `task services`, runs `task go:test-ci`, and dumps the compose logs on failure

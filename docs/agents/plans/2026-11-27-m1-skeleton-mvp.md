@@ -4,7 +4,7 @@ Started 2026-11-27. Status: in progress. Milestone: [M1](../milestones/M1-skelet
 
 ## Resume here
 
-Updated 2026-11-27. PR 1 (planning docs) is staged on branch `docs/initial-planning` and waiting for the user to run `/ship`. When resuming, start the first PR in [Steps](#steps) that is not checked off and whose dependencies are merged. Before ending a session, update this section and check off finished steps.
+Updated 2026-11-27. PR 1 (planning docs) is merged as #2. PR 2 (devcontainer) is ready on branch `devcontainer` for the user to commit and `/ship`; it also carries the expanded Renovate section in M2. PR 3 (Go skeleton) can start now in a fresh session, in its own worktree if PR 2 is still open. When resuming, start the first PR in [Steps](#steps) that is not checked off and whose dependencies are merged. Before ending a session, update this section and check off finished steps.
 
 ## How to work through this plan
 
@@ -19,7 +19,7 @@ Updated 2026-11-27. PR 1 (planning docs) is staged on branch `docs/initial-plann
 
 argonap (`../argonap`) is the pattern for everything in M1. Copy its structure and trim what is Kubernetes- or Argo CD-specific:
 
-- `.devcontainer/` (gantry overlays, Dockerfile, `post_install.sh`)
+- `.devcontainer/` (gantry overlays, Dockerfile). releash has no `post_install.sh`: argonap's sets up GPG signing, which releash doesn't want, and its `git config --global --add` appends to the host `~/.gitconfig` (bind-mounted into the container) on every container create.
 - `main.go` (cobra root command, viper binding through `initializeConfig` and `bindFlags`) and `pkg/cli/argonap.go` (orchestrator with `Config`, `New`, `NewWithConfig`, `Out`, `Err`)
 - `Taskfile.yaml`, `tasks/go.yaml`, `.golangci.yml`
 - `.github/workflows/ci.yaml` (`lint` and `test` jobs only) and `.github/actions/setup-task/action.yml`
@@ -51,15 +51,15 @@ Check for newer releases at the start of each PR, and use them if they are avail
 
 ### PR 1: planning docs
 
-- [ ] Branch `docs/initial-planning`.
+- [x] Branch `docs/initial-planning`. Merged as #2.
 - Contents: `AGENTS.md`, `docs/specs/0001-rollout-decisions.md`, `docs/specs/0002-distribution.md`, `docs/adrs/0001`–`0005`, `docs/agents/milestones/` (template and M1–M5), `docs/agents/plans/`.
 - Checks: links between docs resolve.
 - Depends on: nothing.
 
 ### PR 2: devcontainer
 
-- [ ] Branch `devcontainer`.
-- Contents: `.devcontainer/gantry.yaml`, `releash.libsonnet`, `Dockerfile`, `post_install.sh`, and the generated `devcontainer.json` and `devcontainer-lock.json` (if gantry or the devcontainer CLI produces one). These were already generated on 2026-11-27 and are untracked in the working tree.
+- [x] Branch `devcontainer`. Verified 2026-11-27: gantry regenerates with no diff, and the image builds with Go 1.27.4, golangci-lint v2.15.0 and prek 0.5.11.
+- Contents: `.devcontainer/gantry.yaml`, `releash.libsonnet` (sets only the name), `Dockerfile`, the generated `devcontainer.json`, and `devcontainer-lock.json`, which pins the devcontainer features by digest and is written by VS Code's Dev Containers extension when it builds the container. Also a minimal `.pre-commit-config.yaml` (whitespace, YAML, merge-conflict and large-file checks, plus `golangci-lint fmt`, `golangci-lint run` and `go mod tidy -diff`), because the devcontainer's post-create step runs `prek install && prek run`, which fails without a config. M2 adds markdownlint and the Renovate config hook.
 - Checks: `gantry build --config gantry.yaml --write` in `.devcontainer/` gives no diff; `docker build .devcontainer` succeeds.
 - Milestone criteria: devcontainer.
 - Depends on: PR 1.
