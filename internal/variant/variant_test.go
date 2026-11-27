@@ -364,7 +364,7 @@ func TestRenderCollisions(t *testing.T) {
 		{"slash and tilde in paths", `{"a/b": 1, "a~b": 2}`, `payload of variant "treatment" has colliding keys "a~1b" and "a~0b"`},
 		{"duplicate member", `{"a": 1, "a": 2}`, `payload of variant "treatment" has duplicate key "a"`},
 		{"duplicate member with the same value", `{"a": 1, "a": 1}`, `payload of variant "treatment" has duplicate key "a"`},
-		{"duplicate written with an escape", `{"a": 1, "a": 2}`, `payload of variant "treatment" has duplicate key "a"`},
+		{"duplicate written with an escape", `{"a": 1, "\u0061": 2}`, `payload of variant "treatment" has duplicate key "a"`},
 		{"duplicate nested", `{"x": [{"a": {}, "a": {}}]}`, `payload of variant "treatment" has duplicate key "x/0/a"`},
 		{"duplicate empty name", `{"": 1, "": 2}`, `payload of variant "treatment" has duplicate key ""`},
 	}

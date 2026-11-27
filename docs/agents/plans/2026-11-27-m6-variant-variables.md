@@ -52,7 +52,7 @@ Open questions from the spike, for the user before PR 2 and PR 3 (none affects P
 
 ### PR 1: variable names and formats
 
-- [ ] Branch `m6/variables`.
+- [x] Branch `m6/variables`.
 - Contents: the acceptance edits above; this plan in `docs/agents/plans`; a new package (e.g. `internal/variant`) that turns an evaluated result (enabled, variant name, payload type and value) into the ordered variables of spec 0003 and renders them as `dotenv` or `shell`: prefix validation and the default prefix from a flag name, normalisation per Unicode code point, flattening with `__` and indices, number text preserved, `null` as empty, empty containers and scalar roots, every kind of collision, invalid JSON, unrepresentable values per format, and the fallback (disabled variant) output. Exhaustive table-driven unit tests, including a test that `eval` of `shell` output in `/bin/sh` reproduces values with `'`, `$`, backticks, `\`, spaces and newlines. No network, no CLI. `docs/agents/internals.md`.
 - Milestone criteria: flattening, normalisation, collisions, formats.
 
