@@ -146,11 +146,21 @@ func TestWeightedSplitGivesRepositoriesBothVariants(t *testing.T) {
 func TestFixedUserIDKeepsTheVariantAcrossRuns(t *testing.T) {
 	integration.RequireUnleash(t)
 
+	control := lines("S_ENABLED=true", "S_VARIANT=control")
+	treatment := lines("S_ENABLED=true", "S_VARIANT=treatment", "S_PAYLOAD=v2")
+
 	for i := range 5 {
 		user := given(releash.OptionUserID, fmt.Sprintf("repo-%d", i))
-		first := variantOf(t, "variant-weighted-split", user)
+		first := variantOf(t, "variant-weighted-split", withPrefix("S_"), user)
+		assert.Contains(t, []string{control, treatment}, first.stdout, "repo-%d, run 1", i)
+		assert.Equal(t, releash.ExitOK, first.code, "repo-%d, run 1", i)
+		assert.Empty(t, first.stderr, "repo-%d, run 1", i)
+		// Default stickiness falls back to remoteAddress, which is the same
+		// for every run in this process, so each repeat comes from another
+		// address and only --user-id can keep the variant.
 		for run := range 3 {
-			assert.Equal(t, first.stdout, variantOf(t, "variant-weighted-split", user).stdout, "repo-%d, run %d", i, run+2)
+			addr := given(releash.OptionRemoteAddress, fmt.Sprintf("192.0.2.%d", run+1))
+			assertVariant(t, first.stdout, variantOf(t, "variant-weighted-split", withPrefix("S_"), user, addr), "repo-%d, run %d", i, run+2)
 		}
 	}
 }
@@ -165,10 +175,12 @@ func TestCustomStickinessPropertyPinsTheVariant(t *testing.T) {
 		value := property(fmt.Sprintf("repo=org/repo-%d", i))
 		first := variantOf(t, "variant-custom-stickiness", withPrefix("C_"), value)
 		assert.Contains(t, []string{a, b}, first.stdout, "repo=org/repo-%d", i)
+		assert.Equal(t, releash.ExitOK, first.code, "repo=org/repo-%d", i)
+		assert.Empty(t, first.stderr, "repo=org/repo-%d", i)
 		// A user ID does not change a variant assigned by another property.
 		for _, user := range []string{"alice", "bob"} {
 			res := variantOf(t, "variant-custom-stickiness", withPrefix("C_"), value, given(releash.OptionUserID, user))
-			assert.Equal(t, first.stdout, res.stdout, "repo=org/repo-%d, --user-id %s", i, user)
+			assertVariant(t, first.stdout, res, "repo=org/repo-%d, --user-id %s", i, user)
 		}
 		seen[first.stdout]++
 	}
@@ -263,6 +275,9 @@ func TestDeployConfigFallsBackToTheDisabledVariant(t *testing.T) {
 		setup func(t *testing.T) (string, []option)
 		// want is a regular expression for the one --loud line.
 		want string
+		// minElapsed and maxElapsed bound each run, without --loud and with
+		// it. A zero maxElapsed means fastFallback.
+		minElapsed, maxElapsed time.Duration
 	}{
 		{
 			name:  "unknown flag",
@@ -288,7 +303,9 @@ func TestDeployConfigFallsBackToTheDisabledVariant(t *testing.T) {
 			setup: func(t *testing.T) (string, []option) {
 				return "variant-json-payload", []option{given(releash.OptionURL, integration.UnresponsiveServer(t)), given(releash.OptionTimeout, "500ms")}
 			},
-			want: `^releash: unleash did not answer within 500ms; returning disabled variant\n$`,
+			want:       `^releash: unleash did not answer within 500ms; returning disabled variant\n$`,
+			minElapsed: 500 * time.Millisecond,
+			maxElapsed: time.Second,
 		},
 		{
 			name: "server error",
@@ -337,16 +354,30 @@ func TestDeployConfigFallsBackToTheDisabledVariant(t *testing.T) {
 			want: `^releash: variable F_PAYLOAD of variant "t" contains a newline, which the dotenv format cannot represent; returning disabled variant\n$`,
 		},
 	}
+	// A fallback that needs no timeout must not wait for one: fastFallback is
+	// well under the default --timeout.
+	const fastFallback = 2 * time.Second
 	seen := map[string]string{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			flag, opts := tt.setup(t)
 			opts = append(opts, withPrefix("F_"), given(releash.OptionUserID, repo))
+			maxElapsed := tt.maxElapsed
+			if maxElapsed == 0 {
+				maxElapsed = fastFallback
+			}
+			timed := func(opts ...option) result {
+				t.Helper()
+				start := time.Now()
+				res := variantOf(t, flag, opts...)
+				elapsed := time.Since(start)
+				assert.GreaterOrEqual(t, elapsed, tt.minElapsed, "waits for --timeout")
+				assert.Less(t, elapsed, maxElapsed, "finishes within its bound")
+				return res
+			}
 
-			start := time.Now()
-			quiet := variantOf(t, flag, opts...)
-			assert.Less(t, time.Since(start), 5*time.Second, "finishes within the default --timeout")
-			noisy := variantOf(t, flag, append(opts, loud)...)
+			quiet := timed(opts...)
+			noisy := timed(append(opts, loud)...)
 
 			assertVariant(t, disabledVariant("F_"), quiet, "without --loud")
 			assert.Equal(t, quiet.stdout, noisy.stdout, "--loud changes stdout")

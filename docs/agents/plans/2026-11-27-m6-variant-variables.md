@@ -98,4 +98,5 @@ Open questions from the spike, for the user before PR 2 and PR 3 (none affects P
 
 ### Close out
 
+- [ ] Before spec 0003 is set to `implemented`, settle the spike's open questions on its wording with the user. In particular, spec 0003's "Keep the variant sticky" still says default stickiness is `userId`, then `sessionId`, then random, while the README (PR 3) and the SDK put `remoteAddress` before random; amend the spec to match the README, or change the README if the user decides otherwise.
 - [ ] Every M6 exit criterion holds. Set M6 to `done`, spec 0003 to `implemented`, and update this plan, internals.md and the README status.

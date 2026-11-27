@@ -104,21 +104,33 @@ func TestPipelinePropertyValueKeepsEqualsSign(t *testing.T) {
 }
 
 // The README's GitHub Actions example: gate on check, then load the variant
-// for $GITHUB_ENV, passing both the same context.
+// for $GITHUB_ENV, passing both the same --user-id. The two repositories get
+// different variants of the weighted split, so the variant shows that
+// --user-id reaches its evaluation.
 func TestPipelineGatesThenLoadsTheVariant(t *testing.T) {
 	integration.RequireUnleash(t)
-	same := []string{"--user-id", "ivanklee86/releash", "--properties", "region=eu"}
 
-	pipeline(t, "true\n", append([]string{"check", "variant-json-payload"}, same...)...)
-	pipeline(t, strings.Join([]string{
-		"RELEASH_VARIANT_JSON_PAYLOAD_ENABLED=true",
-		"RELEASH_VARIANT_JSON_PAYLOAD_VARIANT=treatment",
-		`RELEASH_VARIANT_JSON_PAYLOAD_PAYLOAD={"image":{"tag":"v2"},"replicas":3,"regions":["eu","us"]}`,
-		"RELEASH_VARIANT_JSON_PAYLOAD_PAYLOAD__IMAGE__TAG=v2",
-		"RELEASH_VARIANT_JSON_PAYLOAD_PAYLOAD__REGIONS__0=eu",
-		"RELEASH_VARIANT_JSON_PAYLOAD_PAYLOAD__REGIONS__1=us",
-		"RELEASH_VARIANT_JSON_PAYLOAD_PAYLOAD__REPLICAS=3",
-	}, "\n")+"\n", append([]string{"variant", "variant-json-payload"}, same...)...)
+	for repo, want := range map[string]string{
+		"repo-0": "RELEASH_VARIANT_WEIGHTED_SPLIT_ENABLED=true\nRELEASH_VARIANT_WEIGHTED_SPLIT_VARIANT=control\n",
+		"repo-2": "RELEASH_VARIANT_WEIGHTED_SPLIT_ENABLED=true\nRELEASH_VARIANT_WEIGHTED_SPLIT_VARIANT=treatment\nRELEASH_VARIANT_WEIGHTED_SPLIT_PAYLOAD=v2\n",
+	} {
+		pipeline(t, "true\n", "check", "variant-weighted-split", "--user-id", repo)
+		pipeline(t, want, "variant", "variant-weighted-split", "--user-id", repo)
+	}
+}
+
+// The README's custom stickiness: --properties picks the variant of a flag
+// whose variants stick to the repo property.
+func TestPipelinePropertiesPickTheVariant(t *testing.T) {
+	integration.RequireUnleash(t)
+
+	for repo, variant := range map[string]string{"org/repo-0": "a", "ivanklee86/releash": "b"} {
+		want := strings.Join([]string{
+			"RELEASH_VARIANT_CUSTOM_STICKINESS_ENABLED=true",
+			"RELEASH_VARIANT_CUSTOM_STICKINESS_VARIANT=" + variant,
+		}, "\n") + "\n"
+		pipeline(t, want, "variant", "variant-custom-stickiness", "--properties", "repo="+repo)
+	}
 }
 
 // The README's shell example: capture the shell format first, then eval it,
