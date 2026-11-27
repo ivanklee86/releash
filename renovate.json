@@ -3,6 +3,9 @@
   "extends": [
     "config:recommended"
   ],
+  "labels": [
+    "dependencies"
+  ],
   "schedule": [
     "on friday"
   ],
@@ -30,7 +33,7 @@
       "rangeStrategy": "bump"
     },
     {
-      "description": "Compose images and the devcontainer base image are pinned by tag and digest",
+      "description": "Compose images and the Dockerfile base images (the release image and the devcontainer) are pinned by tag and digest",
       "matchManagers": [
         "docker-compose",
         "dockerfile"
@@ -46,7 +49,29 @@
         "go-task/task",
         "goreleaser/goreleaser",
         "k1LoW/octocov",
-        "j178/prek"
+        "j178/prek",
+        "anchore/syft"
+      ],
+      "groupName": "ci"
+    },
+    {
+      "description": "binfmt tags carry a qemu-v prefix that Docker versioning does not read as a version",
+      "matchDatasources": [
+        "docker"
+      ],
+      "matchPackageNames": [
+        "tonistiigi/binfmt"
+      ],
+      "versioning": "regex:^qemu-v(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)$"
+    },
+    {
+      "description": "The QEMU and BuildKit images that the release-check job builds the images with",
+      "matchDatasources": [
+        "docker"
+      ],
+      "matchPackageNames": [
+        "tonistiigi/binfmt",
+        "moby/buildkit"
       ],
       "groupName": "ci"
     },
@@ -102,6 +127,21 @@
       ],
       "groupName": "unleash",
       "automerge": false
+    },
+    {
+      "description": "Only release-check exercises these, and it is not a required check, so native auto-merge would not wait for it. They get their own group, because a group automerges only when every update in it may, so keeping them in ci would stop routine ci updates from automerging",
+      "matchPackageNames": [
+        "gcr.io/distroless/static-debian13",
+        "goreleaser/goreleaser",
+        "anchore/syft",
+        "tonistiigi/binfmt",
+        "moby/buildkit",
+        "goreleaser/goreleaser-action",
+        "docker/setup-qemu-action",
+        "docker/setup-buildx-action"
+      ],
+      "groupName": "release",
+      "automerge": false
     }
   ],
   "customManagers": [
@@ -118,9 +158,9 @@
     },
     {
       "customType": "regex",
-      "description": "Task version input on the setup-task composite action",
+      "description": "Version input defaults on the composite actions in .github/actions (Task, syft)",
       "managerFilePatterns": [
-        "/^\\.github/actions/setup-task/action\\.yml$/"
+        "/^\\.github/actions/[^/]+/action\\.yml$/"
       ],
       "matchStrings": [
         "default: '(?<currentValue>[^']+)' # (?<datasource>[^/\\s]+)/(?<depName>\\S+)"
@@ -137,6 +177,17 @@
         "[A-Z0-9_]+_VERSION: ['\"]?(?<currentValue>v?\\d[^'\"\\s]*)['\"]? # (?<datasource>[^/\\s]+)/(?<depName>\\S+)",
         "version: ['\"]?(?<currentValue>v?\\d[^'\"\\s]*)['\"]? # (?<datasource>[^/\\s]+)/(?<depName>k1LoW/octocov)\\s"
       ]
+    },
+    {
+      "customType": "regex",
+      "description": "Images that actions run, set by tag and digest through an action's image input (setup-qemu-action) or its driver-opts (setup-buildx-action)",
+      "managerFilePatterns": [
+        "/^\\.github/workflows/[^/]+\\.ya?ml$/"
+      ],
+      "matchStrings": [
+        "image[:=] ?(?<depName>[a-z0-9./-]+):(?<currentValue>[^\\s@]+)@(?<currentDigest>sha256:[a-f0-9]{64})"
+      ],
+      "datasourceTemplate": "docker"
     }
   ]
 }

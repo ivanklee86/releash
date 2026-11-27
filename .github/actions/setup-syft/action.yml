@@ -1,0 +1,36 @@
+name: 'Setup syft'
+description: 'Install a pinned syft, which goreleaser runs to generate the SPDX SBOMs, from its GitHub release after checking the release checksum.'
+
+inputs:
+  version:
+    # Renovate updates it through the comment after `default`.
+    description: 'Exact syft version to install, without the leading `v`.'
+    required: false
+    default: '1.57.2' # github-releases/anchore/syft
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install syft
+      shell: bash
+      env:
+        SYFT_RELEASE_VERSION: ${{ inputs.version }}
+        RUNNER_ARCH_NAME: ${{ runner.arch }}
+      run: |
+        set -euo pipefail
+        case "${RUNNER_ARCH_NAME}" in
+          X64) arch=amd64 ;;
+          ARM64) arch=arm64 ;;
+          *) echo "unsupported runner architecture: ${RUNNER_ARCH_NAME}" >&2; exit 1 ;;
+        esac
+        archive="syft_${SYFT_RELEASE_VERSION}_linux_${arch}.tar.gz"
+        base="https://github.com/anchore/syft/releases/download/v${SYFT_RELEASE_VERSION}"
+        dir="${RUNNER_TEMP}/syft"
+        mkdir -p "${dir}/bin"
+        cd "${dir}"
+        curl -sSfLO "${base}/${archive}"
+        curl -sSfLO "${base}/syft_${SYFT_RELEASE_VERSION}_checksums.txt"
+        sha256sum --check --ignore-missing --strict "syft_${SYFT_RELEASE_VERSION}_checksums.txt"
+        tar -xzf "${archive}" --directory "${dir}/bin" syft
+        echo "${dir}/bin" >> "${GITHUB_PATH}"
+        "${dir}/bin/syft" version

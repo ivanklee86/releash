@@ -132,3 +132,72 @@ jobs:
       with:
         config: .octocov.yml
         version: v0.83.5 # github-releases/k1LoW/octocov
+
+  release-check:
+    # Builds what release.yaml publishes, without signing or pushing: every archive and its SBOM,
+    # checksums.txt and both image platforms. Without it, a broken .goreleaser.yaml or Dockerfile
+    # passes every pull request check and fails only once a tag exists.
+    runs-on: ubuntu-26.04
+    env:
+      GORELEASER_VERSION: v2.20.3 # github-releases/goreleaser/goreleaser
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        # goreleaser reads the tags to work out the version.
+        fetch-depth: 0
+    - name: Install Go
+      uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+      with:
+        go-version-file: go.mod
+    - name: Install Task
+      uses: ./.github/actions/setup-task
+    - name: Install syft
+      # goreleaser runs syft for the archive SBOMs.
+      uses: ./.github/actions/setup-syft
+    - name: Set up QEMU
+      # For the arm64 image build and its smoke test. The binaries themselves are cross-compiled by Go.
+      # The binfmt image is set because the action otherwise pulls its floating latest tag.
+      uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+      with:
+        image: tonistiigi/binfmt:qemu-v10.2.3@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0
+        platforms: arm64
+    - name: Set up Docker Buildx
+      # The BuildKit image is set because the docker-container driver otherwise starts its floating default.
+      uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      with:
+        driver-opts: image=moby/buildkit:v0.35.1@sha256:baf6138eb8c37644800c7c913fba051e840ebb9ba13eaf92d92ef9a1712d0b4c
+    - name: Install goreleaser
+      # Install only, so the snapshot runs through the same task, and flags, as a local one.
+      uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
+      with:
+        distribution: goreleaser
+        version: ${{ env.GORELEASER_VERSION }}
+        install-only: true
+    - name: Snapshot release
+      run: task release:snapshot
+    - name: Smoke-test the linux/amd64 binary and both images
+      run: task release:smoke-test
+
+  release-notes:
+    # A snapshot never calls GitHub's release-notes API, so .github/release.yml is checked statically
+    # against the categories and labels in spec 0002. yq and jq are preinstalled on the runner.
+    runs-on: ubuntu-26.04
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    - name: Check .github/release.yml against spec 0002
+      run: |
+        expected='{"changelog":{"categories":[
+          {"title":"Breaking changes","labels":["breaking-change"]},
+          {"title":"Features","labels":["enhancement"]},
+          {"title":"Bug fixes","labels":["bug"]},
+          {"title":"Dependencies","labels":["dependencies"]},
+          {"title":"Other changes","labels":["*"]}
+        ]}}'
+        actual=$(yq --output-format=json '.' .github/release.yml)
+        if ! jq --exit-status --null-input --argjson a "${actual}" --argjson e "${expected}" '$a == $e' > /dev/null; then
+          echo "::error file=.github/release.yml::does not match the release notes categories in docs/specs/0002-distribution.md"
+          diff <(jq --sort-keys . <<< "${expected}") <(jq --sort-keys . <<< "${actual}") || true
+          exit 1
+        fi
