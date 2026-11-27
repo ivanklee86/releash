@@ -71,7 +71,7 @@ Placeholders such as `<topic>` in prose are escaped (`\<topic\>`) or put in back
 
 ### Renovate
 
-`renovate.json` extends `config:recommended`, runs on Fridays, and waits five days (`minimumReleaseAge`) after a release before proposing it. It covers Go modules and the `go` directive in `go.mod` (bumped through `rangeStrategy: bump`), GitHub Actions, prek hooks, the devcontainer base image in `.devcontainer/Dockerfile`, and Docker images in `docker-compose.yaml`. Compose images and the devcontainer base image are pinned by tag and digest. The `devcontainer` manager is disabled: devcontainer features are maintained in the shared gantry base (`ivanklee86/devcontainers`), not in this repository. Regex managers pick up versions the built-in managers cannot see:
+`renovate.json` extends `config:recommended`, runs on Fridays, and waits five days (`minimumReleaseAge`) after a release before proposing it. It covers Go modules and the `go` directive in `go.mod` (bumped through `rangeStrategy: bump`), GitHub Actions, prek hooks, the devcontainer base image in `.devcontainer/Dockerfile`, and Docker images in `docker-compose.yaml`. Compose images and the devcontainer base image are pinned by tag and digest. The `devcontainer` manager is disabled: devcontainer features are maintained in the shared gantry base (`ivanklee86/devcontainers`), not in this repository. That also means Renovate never updates `.devcontainer/devcontainer-lock.json`. Refresh it with the Dev Containers CLI (`devcontainer upgrade --workspace-folder .`) after the gantry base changes a feature. Regex managers pick up versions the built-in managers cannot see:
 
 - `go install <pkg>@<version>` lines in `tasks/go.yaml`
 - Task's version in `.github/actions/setup-task/action.yml`

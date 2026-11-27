@@ -53,7 +53,7 @@ Pinned versions, checked 2026-11-27. Check for newer releases at the start of ea
 ### PR 1: quality hooks and Renovate
 
 - [ ] Branch `m2/quality`.
-- Contents: this plan; `.pre-commit-config.yaml` gains `markdownlint-cli2` and `renovate-config-validator`, as in argonap; `.markdownlint-cli2.yaml` (MD013 off, MD024 siblings only); markdown fixes so the hooks pass on all files; `renovate.json` as the milestone's Renovate section describes, adapted from argonap's (weekly schedule, `minimumReleaseAge` 5 days, groups `go`, `ci`, `devcontainer` and `unleash`, automerge rules, regex managers for `go install` pins and `# <datasource>/<depName>` comments, digest pinning for compose images and the devcontainer base image); `docs/agents/internals.md` sections for prek and Renovate.
+- Contents: this plan; `.pre-commit-config.yaml` gains `markdownlint-cli2` and `renovate-config-validator`, as in argonap; `.markdownlint-cli2.yaml` (MD013 off, MD024 siblings only); markdown fixes so the hooks pass on all files; `renovate.json` as the milestone's Renovate section describes, adapted from argonap's (runs on Fridays, `minimumReleaseAge` 5 days, groups `go`, `ci` and `unleash`, the devcontainer manager disabled, automerge rules, regex managers for `go install` pins and `# <datasource>/<depName>` comments, digest pinning for compose images and the devcontainer base image); `docs/agents/internals.md` sections for prek and Renovate.
 - Checks: `prek run --all-files` passes, including the Renovate validator.
 - Milestone criteria: Renovate; prek hooks pass on all files.
 - Depends on: nothing.
