@@ -4,12 +4,12 @@ Started 2026-11-27. Status: in progress. Milestone: [M5](../milestones/M5-first-
 
 ## Resume here
 
-Updated 2026-11-27. PR 1 (release build and CI) is built on `m5/release-build` and waiting for review; its decisions are under [Reference](#reference), and the ones marked "for review" need the user's confirmation. After it opens, the user adds `release-check` and `release-notes` to the `main` ruleset's required checks. PR 2 (release workflow and docs) follows, stacked on it. When resuming, start the first step in [Steps](#steps) that is not checked off and whose dependencies are done. Before ending a session, update this section and check off finished steps.
+Updated 2026-11-27. PR 1 (release build and CI) is built on `m5/release-build` and waiting for review; its decisions are under [Reference](#reference), and the ones marked "for review" need the user's confirmation. `release-check` and `release-notes` stay out of the `main` ruleset's required checks, as the user decided (see [Reference](#reference)). PR 2 (release workflow and docs) follows, stacked on it. When resuming, start the first step in [Steps](#steps) that is not checked off and whose dependencies are done. Before ending a session, update this section and check off finished steps.
 
 ## How to work through this plan
 
 - One PR per step. Read this plan, the M5 milestone, spec 0002, ADR 0005 and `AGENTS.md` first.
-- Before handing off, run `task`, `prek run --all-files`, and `goreleaser release --snapshot --clean` (goreleaser 2.20.3 is installed locally, with Docker), then smoke-test the snapshot binary and both images with `--version`.
+- Before handing off, run `task`, `prek run --all-files`, `task release:snapshot` (goreleaser 2.20.3 is installed locally, with Docker; the task adds `--skip=sign`, because goreleaser signs even in snapshot mode) and `task release:smoke-test`, which runs the snapshot binary and both images with `--version`.
 - argonap (`ivanklee86/argonap`, readable with `gh api repos/ivanklee86/argonap/contents/<path>`) is the reference for `.goreleaser.yaml`, `Dockerfile`, `release.yaml` and the `release-check` job. Spec 0002 adds signing, SBOMs, release notes and a versioning policy on top of it.
 - Pin every version: actions by full commit SHA with a version comment, tools in workflows with a `# github-releases/<owner>/<repo>` comment that Renovate's existing rule reads, and the image base by digest.
 - The user runs `/ship`. Claude never merges. Claude pushes a tag or creates a label only after the user says go in the moment.
