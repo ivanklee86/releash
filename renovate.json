@@ -93,6 +93,16 @@
       "platformAutomerge": true
     },
     {
+      "description": "Used only by release.yaml, which no pull request check runs, so a broken update would first show when a tag is pushed: always needs a human",
+      "matchPackageNames": [
+        "sigstore/cosign",
+        "sigstore/cosign-installer",
+        "docker/login-action"
+      ],
+      "groupName": "release",
+      "automerge": false
+    },
+    {
       "description": "The Go version, the devcontainer base image and golangci-lint move together in go-toolchain and need a human: the devcontainer golangci-lint comes from the base image and is built with its Go, so CI must not drift from it",
       "matchDatasources": [
         "golang-version"
