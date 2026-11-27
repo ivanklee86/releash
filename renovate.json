@@ -3,6 +3,107 @@
   "extends": [
     "config:recommended"
   ],
+  "schedule": [
+    "on friday"
+  ],
+  "minimumReleaseAge": "5 days",
+  "minimumReleaseAgeBehaviour": "timestamp-optional",
+  "pre-commit": {
+    "enabled": true
+  },
+  "devcontainer": {
+    "description": "Features are maintained in the shared gantry base (ivanklee86/devcontainers), not here; the base image digest in .devcontainer/Dockerfile is still updated by the dockerfile manager",
+    "enabled": false
+  },
+  "packageRules": [
+    {
+      "matchDatasources": [
+        "go"
+      ],
+      "groupName": "go"
+    },
+    {
+      "description": "Keep the go directive in go.mod current, not only the toolchain line",
+      "matchDatasources": [
+        "golang-version"
+      ],
+      "rangeStrategy": "bump"
+    },
+    {
+      "description": "Compose images and the devcontainer base image are pinned by tag and digest",
+      "matchManagers": [
+        "docker-compose",
+        "dockerfile"
+      ],
+      "pinDigests": true
+    },
+    {
+      "description": "CI tooling pinned through # github-releases/<repo> comments",
+      "matchDatasources": [
+        "github-releases"
+      ],
+      "matchPackageNames": [
+        "go-task/task",
+        "goreleaser/goreleaser",
+        "k1LoW/octocov",
+        "j178/prek"
+      ],
+      "groupName": "ci"
+    },
+    {
+      "matchManagers": [
+        "github-actions",
+        "pre-commit"
+      ],
+      "groupName": "ci"
+    },
+    {
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "pin",
+        "digest"
+      ],
+      "automerge": true,
+      "platformAutomerge": true
+    },
+    {
+      "description": "The Go version, the devcontainer base image and golangci-lint move together in go-toolchain and need a human: the devcontainer golangci-lint comes from the base image and is built with its Go, so CI must not drift from it",
+      "matchDatasources": [
+        "golang-version"
+      ],
+      "groupName": "go-toolchain",
+      "automerge": false
+    },
+    {
+      "matchManagers": [
+        "dockerfile"
+      ],
+      "matchPackageNames": [
+        "golang",
+        "ghcr.io/ivanklee86/devcontainer/go"
+      ],
+      "groupName": "go-toolchain",
+      "automerge": false
+    },
+    {
+      "matchPackageNames": [
+        "github.com/golangci/golangci-lint/**"
+      ],
+      "groupName": "go-toolchain",
+      "automerge": false
+    },
+    {
+      "description": "The server image and the SDK move together and always need a human: the integration tests are the only guard against behaviour changes, and the seed script must be checked against the new Admin API",
+      "matchPackageNames": [
+        "unleashorg/unleash-server",
+        "github.com/Unleash/unleash-go-sdk",
+        "github.com/Unleash/unleash-go-sdk/**"
+      ],
+      "groupName": "unleash",
+      "automerge": false
+    }
+  ],
   "customManagers": [
     {
       "customType": "regex",
@@ -25,6 +126,17 @@
         "default: '(?<currentValue>[^']+)' # (?<datasource>[^/\\s]+)/(?<depName>\\S+)"
       ],
       "extractVersionTemplate": "^v?(?<version>.+)$"
+    },
+    {
+      "customType": "regex",
+      "description": "<TOOL>_VERSION env and the octocov action's version input in workflows, marked with # <datasource>/<depName>; prek-version is read natively by the github-actions manager",
+      "managerFilePatterns": [
+        "/^\\.github/workflows/[^/]+\\.ya?ml$/"
+      ],
+      "matchStrings": [
+        "[A-Z0-9_]+_VERSION: ['\"]?(?<currentValue>v?\\d[^'\"\\s]*)['\"]? # (?<datasource>[^/\\s]+)/(?<depName>\\S+)",
+        "version: ['\"]?(?<currentValue>v?\\d[^'\"\\s]*)['\"]? # (?<datasource>[^/\\s]+)/(?<depName>k1LoW/octocov)\\s"
+      ]
     }
   ]
 }

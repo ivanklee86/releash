@@ -1,5 +1,5 @@
 ---
-status: planned  # planned | active | done | dropped
+status: active  # planned | active | done | dropped
 ---
 
 # M2: Dev tooling and testing
@@ -53,11 +53,11 @@ Specs (in `docs/specs`) delivered by this milestone. Check each off when it is i
   - Go modules and the Go version in `go.mod`
   - Go tools installed with `go install <pkg>@<version>` in `tasks/go.yaml`, through a regex manager
   - Docker images in `docker-compose.yaml` (Unleash, Postgres, the seed image), pinned by digest
-  - the devcontainer base image, pinned by digest in `.devcontainer/Dockerfile`, and devcontainer features
+  - the devcontainer base image, pinned by digest in `.devcontainer/Dockerfile`. Devcontainer features are maintained in the shared gantry base (`ivanklee86/devcontainers`) and are not tracked here.
   - GitHub Actions, and tool versions in workflows and the `setup-task` action marked with `# <datasource>/<depName>` comments, as argonap does
   - pre-commit hooks in `.pre-commit-config.yaml`
-- Updates are grouped as in argonap: `go` (modules, Go version, base image), `ci` (actions, hooks, CI tools), `devcontainer`, and a new `unleash` group for the Unleash server image together with the Go SDK. The server image and the seed script are upgraded together (see Risks).
-- Minor, patch, pin and digest updates automerge once CI passes. Major updates of Go modules, Go and the base image need a human, and so do Unleash server and SDK updates of any size, because the integration tests are the only guard against behaviour changes there.
+- Updates are grouped as in argonap, without its `devcontainer` group and with the Go toolchain split out: `go` (modules), `go-toolchain` (the Go version, the devcontainer base image and golangci-lint, which must move together), `ci` (actions, hooks, CI tools), and a new `unleash` group for the Unleash server image together with the Go SDK. The server image and the seed script are upgraded together (see Risks).
+- Minor, patch, pin and digest updates automerge once CI passes. Major updates of Go modules need a human, and so do `go-toolchain` updates of any size (the devcontainer's golangci-lint comes from the base image and is built with its Go, so CI must not drift from it) and Unleash server and SDK updates of any size, because the integration tests are the only guard against behaviour changes there.
 - The Renovate config hook in prek validates `renovate.json`.
 
 ### Quality and CI
