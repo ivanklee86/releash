@@ -4,7 +4,7 @@ Started 2026-11-27. Status: in progress. Milestone: [M2](../milestones/M2-dev-to
 
 ## Resume here
 
-Updated 2026-11-27. PR 1 is merged as #9. PRs 2 and 3 are committed locally as a stack on `main`: `m2/compose`, then `m2/integration-tests`. They were built in parallel worktrees, reviewed, and pass `task`, `prek run --all-files` and `task go:test-ci` against the stack. Next: the user ships `m2/compose`, then `m2/integration-tests` once it merges (rebased onto `main` first). PR 4 (CI jobs) starts once PR 3 merges. When resuming, start the first PR in [Steps](#steps) that is not checked off and whose dependencies are merged. Before ending a session, update this section and check off finished steps.
+Updated 2026-11-27. PRs 1 and 2 are merged (#9, #11). PR 3 is committed locally on `m2/integration-tests`, rebased onto `main`, and passes `task`, `prek run --all-files` and `task go:test-ci` against the stack. Next: the user ships it. PR 4 (CI jobs) starts once PR 3 merges. When resuming, start the first PR in [Steps](#steps) that is not checked off and whose dependencies are merged. Before ending a session, update this section and check off finished steps.
 
 ## How to work through this plan
 
@@ -60,7 +60,7 @@ Pinned versions, checked 2026-11-27. Check for newer releases at the start of ea
 
 ### PR 2: local Unleash stack
 
-- [ ] Branch `m2/compose`.
+- [x] Branch `m2/compose`. Merged as #11. Its review switched `task services` to `docker compose run --rm seed`, made the Postgres healthcheck use TCP, and set `task releash` variables on its command line.
 - Contents: `docker-compose.yaml` (Postgres, Unleash on `localhost:4242`, and a one-shot `seed` service that `task services` runs with `docker compose run --rm seed` once Unleash is healthy; its review replaced a `ready` service, because `up --wait` on a running stack did not wait for the seed again); `unleash/seed.py` and `unleash/fixtures.json`; `tasks/unleash.yaml` with `services`, `services:down` and `releash`; the root Taskfile includes it; `.env.example`; `docs/agents/internals.md` sections for the stack and the fixture flags.
 - Fixture flags: everything the milestone lists. Check whether the pinned open-source image supports a second project. If it doesn't, drop that fixture and add the note to spec 0001 that the milestone asks for.
 - Checks: `task services` exits 0 from a clean state and again on a running stack; `task services:down` removes the volumes; re-running the seed is a no-op; the Client API returns the expected flags for each client token (checked by hand with `curl`).
