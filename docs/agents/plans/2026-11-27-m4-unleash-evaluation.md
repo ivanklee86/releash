@@ -4,7 +4,7 @@ Started 2026-11-27. Status: in progress. Milestone: [M4](../milestones/M4-unleas
 
 ## Resume here
 
-Updated 2026-11-27. A spike on the v6 SDK ran first (findings below). PR 1 (evaluation) is merged. PR 2 (usage metrics) is on `m4/metrics`, rebased onto `main` with the PR 1 review fixes as its first commit. PR 3 (automatic `remoteAddress`) is on `m4/remote-address`, stacked on `m4/metrics`, with its review findings fixed; once PR 2 merges it is rebased onto `main`. Next: the user runs `/ship` for PR 2, then PR 3, then the close-out. When resuming, start the first PR in [Steps](#steps) that is not checked off and whose dependencies are merged. Before ending a session, update this section and check off finished steps.
+Updated 2026-11-27. A spike on the v6 SDK ran first (findings below). PR 1 (evaluation, #16) and PR 2 (usage metrics, #17) are merged; their review fixes, which the merges left out, are the first commit of PR 3. PR 3 (automatic `remoteAddress`) is on `m4/remote-address`, rebased onto `main`, with its review findings fixed. Next: the user runs `/ship` for PR 3, then the close-out. When resuming, start the first PR in [Steps](#steps) that is not checked off and whose dependencies are merged. Before ending a session, update this section and check off finished steps.
 
 Decisions made while building PR 1, within the ones below:
 
@@ -59,7 +59,7 @@ The spike ran the v6.5.1 SDK against the local stack and fake servers on 2026-11
 
 ### PR 2: usage metrics
 
-- [x] Branch `m4/metrics`, stacked on `m4/evaluate`.
+- [x] Branch `m4/metrics`, stacked on `m4/evaluate`. Merged as #17.
 - Contents: a short metrics interval and a wait for the SDK to confirm the send before exit, bounded by `--timeout`; a failed or hanging metrics endpoint never changes stdout or the exit code, and is reported with `--loud`; integration tests for each, using a fake metrics endpoint where the stack cannot fail on demand.
 - Milestone criteria: metrics.
 - Decisions made while building it:
