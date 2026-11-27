@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -30,9 +31,13 @@ import (
 //   - fallbacks, each false with its own --loud line and nothing without it:
 //     unknown flag, 401, 403, another error status, malformed JSON, JSON of
 //     the wrong shape, unreachable server, unresponsive server (within
-//     --timeout)
+//     --timeout), a 304 on the first fetch, a flag the SDK cannot evaluate
+//   - the --loud line for a redirected feature fetch names the status of the
+//     last hop
 //   - a rejected register request does not change the answer and shows only
 //     under --loud
+//   - a register request that never finishes does not change the answer or
+//     hold back a fetch failure past its own deadline
 //   - no files are written to the temp directory
 
 const testToken = "default:production.test-token"
@@ -224,6 +229,8 @@ func TestCheckFallsBackToFalse(t *testing.T) {
 		{name: "404", features: serve(http.StatusNotFound, ``), wantLine: "releash: unleash answered the feature fetch with HTTP 404; returning false"},
 		{name: "invalid JSON", features: serve(http.StatusOK, `{"features": [`), wantLine: malformed},
 		{name: "JSON of the wrong shape", features: serve(http.StatusOK, `{"features": "on"}`), wantLine: malformed},
+		{name: "304 on the first fetch", features: serve(http.StatusNotModified, ``), wantLine: "releash: unleash answered the feature fetch with HTTP 304; returning false"},
+		{name: "unevaluable flag", features: serve(http.StatusOK, featuresJSON(`{"name":"on","enabled":true,"strategies":[{"name":"default","segments":[99]}]}`)), wantLine: `releash: unleash could not evaluate flag "on": segment does not exist; returning false`},
 	}
 	for _, tt := range tests {
 		flag := tt.flag
@@ -307,6 +314,76 @@ func TestCheckIgnoresARejectedRegistration(t *testing.T) {
 	assert.Equal(t, "releash: registering with unleash failed: HTTP 401; the answer is unaffected\n", stderr)
 }
 
+// hang blocks until the client gives up on the request. The server notices
+// that only once the request body has been read.
+func hang(_ http.ResponseWriter, r *http.Request) {
+	_, _ = io.Copy(io.Discard, r.Body)
+	<-r.Context().Done()
+}
+
+func TestCheckDoesNotWaitForAHangingRegistration(t *testing.T) {
+	// With --timeout 1s the register request may take 250ms.
+	tests := []struct {
+		name       string
+		features   http.HandlerFunc
+		wantStdout string
+		wantStderr string
+	}{
+		{
+			name:       "features served",
+			features:   serve(http.StatusOK, featuresJSON(enabledFlag)),
+			wantStdout: "true\n",
+			wantStderr: "releash: registering with unleash did not finish within 250ms; the answer is unaffected\n",
+		},
+		{
+			name:       "token rejected",
+			features:   serve(http.StatusUnauthorized, `{}`),
+			wantStdout: "false\n",
+			wantStderr: "releash: unleash rejected the API token (HTTP 401); returning false\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			url := fakeUnleash(t, tt.features, hang)
+
+			start := time.Now()
+			stdout, stderr, code := runCheck(t, url, "on", true, set(OptionTimeout, timeout, "1s"))
+			elapsed := time.Since(start)
+
+			assert.Equal(t, ExitOK, code)
+			assert.Equal(t, tt.wantStdout, stdout)
+			assert.Equal(t, tt.wantStderr, stderr)
+			assert.Less(t, elapsed, 750*time.Millisecond, "answers soon after the register deadline")
+		})
+	}
+}
+
+func TestCheckReportsTheLastHopOfARedirectedFetch(t *testing.T) {
+	tests := []struct {
+		name       string
+		target     http.HandlerFunc
+		wantStdout string
+		wantStderr string
+	}{
+		{"token rejected", serve(http.StatusUnauthorized, `{}`), "false\n", "releash: unleash rejected the API token (HTTP 401); returning false\n"},
+		{"features served", serve(http.StatusOK, featuresJSON(enabledFlag)), "true\n", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			target := fakeUnleash(t, tt.target, nil)
+			redirecting := fakeUnleash(t, func(w http.ResponseWriter, r *http.Request) {
+				http.Redirect(w, r, target+"/client/features", http.StatusFound)
+			}, nil)
+
+			stdout, stderr, code := runCheck(t, redirecting, "on", true)
+
+			assert.Equal(t, ExitOK, code)
+			assert.Equal(t, tt.wantStdout, stdout)
+			assert.Equal(t, tt.wantStderr, stderr)
+		})
+	}
+}
+
 func TestCheckWritesNoFiles(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("TMPDIR", tmp)
@@ -321,7 +398,7 @@ func TestCheckWritesNoFiles(t *testing.T) {
 	assert.Empty(t, entries, "files in the temp directory")
 }
 
-func TestOnErrorPassesOnOnlyFeatureFetchErrors(t *testing.T) {
+func TestOnErrorPassesOnOnlyFetchAndEvaluationErrors(t *testing.T) {
 	urlErr := func(path string) error {
 		return &url.Error{Op: "Post", URL: "http://unleash.example.com/api" + path, Err: errors.New("connection refused")}
 	}
@@ -334,12 +411,13 @@ func TestOnErrorPassesOnOnlyFeatureFetchErrors(t *testing.T) {
 		{"metrics transport error", urlErr("/client/metrics"), false},
 		{"feature fetch transport error", urlErr("/client/features"), true},
 		{"decode error", errors.New("unexpected EOF"), true},
+		{"evaluation error", errors.New("segment does not exist"), true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			l := newSDKListener()
 			l.OnError(tt.err)
 			select {
-			case got := <-l.fetchFailed:
+			case got := <-l.failed:
 				assert.True(t, tt.want, "passed on")
 				assert.Equal(t, tt.err, got)
 			default:

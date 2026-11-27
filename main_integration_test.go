@@ -87,7 +87,9 @@ func TestPipelinePropertyValueKeepsEqualsSign(t *testing.T) {
 	isAB := integration.CreateFlag(t, integration.RolloutWith(
 		integration.Constraint{ContextName: "build", Operator: "IN", Values: []string{"a=b"}}))
 	// Unleash rejects an empty value in a constraint, and the SDK reads an
-	// empty property as unset, so an empty value is checked as "not a".
+	// empty property as unset, so this only checks that an empty value is
+	// accepted and leaves the answer unaffected. The unit tests check that the
+	// empty value reaches evaluation.
 	notA := integration.CreateFlag(t, integration.RolloutWith(
 		integration.Constraint{ContextName: "build", Operator: "NOT_IN", Values: []string{"a"}}))
 

@@ -46,11 +46,13 @@ type evaluator func(ctx context.Context, req checkRequest) outcome
 // evaluates req.flag against req.context with the Unleash Go SDK.
 //
 // The whole call, including registering with Unleash and closing the SDK
-// client, finishes within req.timeout. The answer is false, with fallback
-// set, when the first feature fetch fails or does not finish in time, or when
-// the flag is not in the fetched flags. Fetched flags are kept in memory
-// only, so evaluate never reads or writes files, and nothing carries over
-// from one call to the next.
+// client, finishes within req.timeout. The register request may take only
+// registerTimeout(req.timeout), so a slow register cannot use up the time
+// the feature fetch needs. The answer is false, with fallback set, when the
+// first feature fetch fails, is not a 2xx response, or does not finish in
+// time, when the flag is not in the fetched flags, or when the SDK cannot
+// evaluate it. Fetched flags are kept in memory only, so evaluate never
+// reads or writes files, and nothing carries over from one call to the next.
 func evaluate(ctx context.Context, req checkRequest) outcome {
 	runCtx, cancel := context.WithTimeout(ctx, req.timeout)
 	defer cancel()
@@ -59,14 +61,20 @@ func evaluate(ctx context.Context, req checkRequest) outcome {
 	defer base.CloseIdleConnections()
 	log := &requestLog{}
 	httpClient := &http.Client{
-		Timeout:   req.timeout,
-		Transport: &boundedTransport{base: base, run: runCtx, log: log},
+		Timeout: req.timeout,
+		Transport: &boundedTransport{
+			base:            base,
+			run:             runCtx,
+			registerTimeout: registerTimeout(req.timeout),
+			log:             log,
+		},
 	}
 	events := newSDKListener()
 
-	// NewClient registers with Unleash before it returns, so it blocks until
-	// that request ends, at the latest when runCtx does. The first feature
-	// fetch runs alongside on the SDK's own goroutine.
+	// NewClient registers with Unleash before it returns, and the SDK calls
+	// the listener only after that, so the register request holds back the
+	// answer until it ends. The first feature fetch runs alongside on the
+	// SDK's own goroutine.
 	client, err := unleash.NewClient(
 		unleash.WithUrl(req.url.String()),
 		unleash.WithAppName(req.context.appName),
@@ -84,9 +92,14 @@ func evaluate(ctx context.Context, req checkRequest) outcome {
 	fetched := false
 	select {
 	case <-events.ready:
+		// The SDK also reports ready after a 304, which leaves it with no flags.
+		if seen := log.outcome(featuresPath); seen.status != 0 && !isSuccess(seen.status) {
+			out = outcome{fallback: fetchFailure(runCtx, req.timeout, seen, nil)}
+			break
+		}
 		fetched = true
 		out = evaluateFlag(client, req)
-	case err := <-events.fetchFailed:
+	case err := <-events.failed:
 		out = outcome{fallback: fetchFailure(runCtx, req.timeout, log.outcome(featuresPath), err)}
 	case <-runCtx.Done():
 		out = outcome{fallback: timedOut(req.timeout)}
@@ -99,10 +112,16 @@ func evaluate(ctx context.Context, req checkRequest) outcome {
 	// runCtx, and returns once every listener callback has run.
 	_ = client.Close()
 
+	if fetched && out.fallback == "" {
+		if err := evaluationError(client, events); err != nil {
+			out = outcome{fallback: fmt.Sprintf("unleash could not evaluate flag %q: %v; returning false", req.flag, err)}
+		}
+	}
+
 	// When the fetch failed, the register request usually failed for the same
 	// reason, and the fallback line already gives it.
 	if fetched {
-		if note := registerFailure(log.outcome(registerPath)); note != "" {
+		if note := registerFailure(log.outcome(registerPath), registerTimeout(req.timeout)); note != "" {
 			out.notes = append(out.notes, note)
 		}
 	}
@@ -125,6 +144,33 @@ func evaluateFlag(client *unleash.Client, req checkRequest) outcome {
 		return outcome{fallback: fmt.Sprintf("flag %q not found; returning false", req.flag)}
 	}
 	return outcome{enabled: enabled}
+}
+
+// evaluationError returns the error the SDK reported while client evaluated
+// a flag, or nil. client must be closed: the SDK has then either passed the
+// error to events or left it in client.Errors().
+func evaluationError(client *unleash.Client, events *sdkListener) error {
+	select {
+	case err := <-events.failed:
+		return err
+	default:
+	}
+	for {
+		select {
+		case err := <-client.Errors():
+			if !isRequestError(err, registerPath) && !isRequestError(err, metricsPath) {
+				return err
+			}
+		default:
+			return nil
+		}
+	}
+}
+
+// registerTimeout is how long the register request may take in a check
+// bounded by timeout: a quarter of it, and at most one second.
+func registerTimeout(timeout time.Duration) time.Duration {
+	return min(timeout/4, time.Second)
 }
 
 // sdkContext converts c to the SDK's context. An unset currentTime stays
@@ -155,7 +201,7 @@ func fetchFailure(runCtx context.Context, timeout time.Duration, seen requestOut
 		return fmt.Sprintf("unleash unreachable: %v; returning false", seen.err)
 	case seen.status == http.StatusUnauthorized || seen.status == http.StatusForbidden:
 		return fmt.Sprintf("unleash rejected the API token (HTTP %d); returning false", seen.status)
-	case seen.status != 0 && (seen.status < 200 || seen.status > 299):
+	case seen.status != 0 && !isSuccess(seen.status):
 		return fmt.Sprintf("unleash answered the feature fetch with HTTP %d; returning false", seen.status)
 	case seen.status != 0:
 		return fmt.Sprintf("unleash sent a malformed feature response: %v; returning false", err)
@@ -169,18 +215,22 @@ func timedOut(timeout time.Duration) string {
 	return fmt.Sprintf("unleash did not answer within %s; returning false", timeout)
 }
 
-// registerFailure returns the --loud note for a failed register request, or
-// "" if it succeeded or was never sent.
-func registerFailure(seen requestOutcome) string {
+// registerFailure returns the --loud note for a failed register request that
+// was allowed to take limit, or "" if it succeeded or was never sent.
+func registerFailure(seen requestOutcome, limit time.Duration) string {
 	switch {
+	case isTimeout(seen.err):
+		return fmt.Sprintf("registering with unleash did not finish within %s; the answer is unaffected", limit)
 	case seen.err != nil:
 		return fmt.Sprintf("registering with unleash failed: %v; the answer is unaffected", seen.err)
-	case seen.status != 0 && (seen.status < 200 || seen.status > 299):
+	case seen.status != 0 && !isSuccess(seen.status):
 		return fmt.Sprintf("registering with unleash failed: HTTP %d; the answer is unaffected", seen.status)
 	default:
 		return ""
 	}
 }
+
+func isSuccess(status int) bool { return status >= 200 && status <= 299 }
 
 // isTimeout reports whether err is a timeout or a cancelled request.
 func isTimeout(err error) bool {
@@ -213,30 +263,32 @@ func (memoryStorage) Persist(*api.FeatureResponse) error { return nil }
 type sdkListener struct {
 	readyOnce sync.Once
 	ready     chan struct{}
-	// fetchFailed receives the first error from the feature fetch.
-	fetchFailed chan error
+	// failed receives the first error that is not from a register or metrics
+	// request: before ready, a failed feature fetch; after it, a failed
+	// evaluation.
+	failed chan error
 }
 
 func newSDKListener() *sdkListener {
-	return &sdkListener{ready: make(chan struct{}), fetchFailed: make(chan error, 1)}
+	return &sdkListener{ready: make(chan struct{}), failed: make(chan error, 1)}
 }
 
-// OnReady is called after the first successful feature fetch.
+// OnReady is called after the first feature fetch that did not fail.
 func (l *sdkListener) OnReady() { l.readyOnce.Do(func() { close(l.ready) }) }
 
 // OnUpdate is called after later fetches that changed the flags.
 func (l *sdkListener) OnUpdate() {}
 
 // OnError receives errors from every SDK request and from evaluation. Only
-// errors from the feature fetch are passed on: the SDK reports transport
-// errors of register and metrics requests here too, as a *url.Error naming
-// their path. Their HTTP status errors go to OnWarning.
+// errors from the feature fetch and from evaluation are passed on: the SDK
+// reports transport errors of register and metrics requests here too, as a
+// *url.Error naming their path. Their HTTP status errors go to OnWarning.
 func (l *sdkListener) OnError(err error) {
 	if isRequestError(err, registerPath) || isRequestError(err, metricsPath) {
 		return
 	}
 	select {
-	case l.fetchFailed <- err:
+	case l.failed <- err:
 	default:
 	}
 }
@@ -265,23 +317,42 @@ type requestOutcome struct {
 	err    error
 }
 
-// requestLog keeps the outcome of the first request to featuresPath and to
-// registerPath. It is safe for concurrent use.
+// requestLog keeps, for featuresPath and for registerPath, the outcome of the
+// first request to that path. When http.Client follows redirects from that
+// request, the outcome of the last hop replaces it, wherever the hop went. It
+// is safe for concurrent use.
 type requestLog struct {
 	mu    sync.Mutex
-	first map[string]requestOutcome
+	first map[string]loggedRequest
 }
 
-func (l *requestLog) record(path string, o requestOutcome) {
+type loggedRequest struct {
+	// origin is the request that started the redirect chain.
+	origin  *http.Request
+	outcome requestOutcome
+}
+
+// record stores o as the outcome of req, a request boundedTransport was given.
+func (l *requestLog) record(req *http.Request, o requestOutcome) {
+	// http.Client sets Response on each redirect hop to the response that
+	// caused it, and boundedTransport points that response back at its hop.
+	origin := req
+	for origin.Response != nil && origin.Response.Request != nil {
+		origin = origin.Response.Request
+	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	for _, p := range []string{featuresPath, registerPath} {
-		if _, seen := l.first[p]; strings.HasSuffix(path, p) && !seen {
-			if l.first == nil {
-				l.first = make(map[string]requestOutcome)
-			}
-			l.first[p] = o
+		if !strings.HasSuffix(origin.URL.Path, p) {
+			continue
 		}
+		if prev, seen := l.first[p]; seen && prev.origin != origin {
+			continue
+		}
+		if l.first == nil {
+			l.first = make(map[string]loggedRequest)
+		}
+		l.first[p] = loggedRequest{origin: origin, outcome: o}
 	}
 }
 
@@ -290,21 +361,29 @@ func (l *requestLog) record(path string, o requestOutcome) {
 func (l *requestLog) outcome(path string) requestOutcome {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	return l.first[path]
+	return l.first[path].outcome
 }
 
 // boundedTransport sends requests through base, cancels each one when run
-// ends, and records outcomes in log. http.Client.Timeout bounds each request
-// on its own, so without run the register request and the metrics flush in
-// Close could each take a full timeout.
+// ends, cancels a register request after registerTimeout, and records
+// outcomes in log. http.Client.Timeout bounds each request on its own, so
+// without run the register request and the metrics flush in Close could each
+// take a full timeout.
 type boundedTransport struct {
-	base http.RoundTripper
-	run  context.Context
-	log  *requestLog
+	base            http.RoundTripper
+	run             context.Context
+	registerTimeout time.Duration
+	log             *requestLog
 }
 
 func (t *boundedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	ctx, cancel := context.WithCancel(req.Context())
+	var ctx context.Context
+	var cancel context.CancelFunc
+	if strings.HasSuffix(req.URL.Path, registerPath) {
+		ctx, cancel = context.WithTimeout(req.Context(), t.registerTimeout)
+	} else {
+		ctx, cancel = context.WithCancel(req.Context())
+	}
 	stop := context.AfterFunc(t.run, cancel)
 	release := func() {
 		stop()
@@ -314,10 +393,13 @@ func (t *boundedTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 	resp, err := t.base.RoundTrip(req.WithContext(ctx))
 	if err != nil {
 		release()
-		t.log.record(req.URL.Path, requestOutcome{err: err})
+		t.log.record(req, requestOutcome{err: err})
 		return nil, err
 	}
-	t.log.record(req.URL.Path, requestOutcome{status: resp.StatusCode})
+	// base points Request at the copy that carries ctx. requestLog follows
+	// redirect chains through it, so it must be the request this hop was given.
+	resp.Request = req
+	t.log.record(req, requestOutcome{status: resp.StatusCode})
 	// The request context must outlive RoundTrip until the body is read.
 	resp.Body = &releasingBody{ReadCloser: resp.Body, release: release}
 	return resp, nil

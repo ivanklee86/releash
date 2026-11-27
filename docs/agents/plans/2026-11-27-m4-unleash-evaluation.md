@@ -14,12 +14,13 @@ Decisions made while building PR 1, within the ones below:
 - Metrics stay enabled with the SDK's default interval, because the SDK sends the register request only when metrics are enabled, and spec 0001 has releash register under its `appName`. With the default 60s interval no periodic send happens within a normal run; `Close` makes the SDK's one shutdown flush, bounded by the run context. On a fallback, releash cancels the run context before `Close`, so nothing waits on the flush. PR 2 owns the rest.
 - `remoteAddress` stays unset without `--remote-address`; PR 3 adds detection.
 - Without `--current-time`, `currentTime` is left empty, and the SDK uses the time of evaluation, which is within `--timeout` of the start of the check.
-- Unleash rejects an empty value in a constraint, and the SDK reads an empty property the same as an unset one, so the scenario for `--properties build=` checks it against a `NOT_IN` constraint.
+- Unleash rejects an empty value in a constraint, and the SDK reads an empty property the same as an unset one, so the scenario for `--properties build=` can only check that an empty value is accepted and leaves a `NOT_IN` constraint passing; the unit tests check that the empty value reaches evaluation.
 
 Known limits found in PR 1:
 
-- The SDK delivers listener callbacks only after `NewClient` returns, and `NewClient` waits for the register request. If register hangs for the whole `--timeout` while the feature fetch succeeds, the check times out and falls back to `false`. Failing fast on a rejected fetch also waits for register to finish, which takes milliseconds against a working server.
-- Spec 0001 says the SDK "does not flush them on `Close`". That was true of v5; v6.5.1 does flush once on `Close` (finding 6). PR 2 should reword that bullet when it settles how metrics are sent.
+- The SDK delivers listener callbacks only after `NewClient` returns, and `NewClient` waits for the register request. A hanging register used to make the check time out even when the features were served. After review, the register request has its own deadline (a quarter of `--timeout`, at most one second), so the answer is unaffected and a rejected fetch falls back once that deadline passes at the latest; spec 0001 records this.
+- Spec 0001 said the SDK "does not flush them on `Close`". That was true of v5; v6.5.1 does flush once on `Close` (finding 6). The bullet now describes the v6 flush and leaves how the send is made reliable to PR 2.
+- Review also found that a first fetch answered with 304 left the SDK ready with no flags (reported as "not found"), that a flag the SDK fails to evaluate gave `false` with no `--loud` line, and that a redirected fetch reported the redirect status. Each now has its own `--loud` line or reports the last hop.
 
 ## How to work through this plan
 
