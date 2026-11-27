@@ -34,10 +34,10 @@ A flag `checkout-redesign` in Unleash has two variants, `control` and `treatment
 {"image": {"tag": "v2"}, "replicas": 3, "regions": ["eu", "us"]}
 ```
 
-Gate on the flag with `check`, then load the variant:
+Gate on the flag with `check`, then load the variant, passing both the same context:
 
 ```sh
-if [ "$(releash check checkout-redesign)" = "true" ]; then
+if [ "$(releash check checkout-redesign --user-id "$GITHUB_REPOSITORY")" = "true" ]; then
   releash variant checkout-redesign --user-id "$GITHUB_REPOSITORY" >> "$GITHUB_ENV"
 fi
 ```
@@ -71,10 +71,10 @@ releash variant checkout-redesign --prefix CHECKOUT_
 # ...
 ```
 
-`--format shell` prints `export` statements, quoted so they can be passed to `eval` safely:
+`--format shell` prints `export` statements, quoted so they can be passed to `eval` safely. Capture the output first, so that releash's exit code still fails the step: `eval "$(releash ...)"` exits with `eval`'s status, which hides exit 6 and codes 2–5.
 
 ```sh
-eval "$(releash variant checkout-redesign --format shell)"
+vars=$(releash variant checkout-redesign --user-id "$GITHUB_REPOSITORY" --format shell) && eval "$vars"
 ```
 
 ## Keep the variant sticky
@@ -87,7 +87,9 @@ The simplest way is to pass the repository name as `--user-id`. Default stickine
 releash variant checkout-redesign --user-id "$GITHUB_REPOSITORY" >> "$GITHUB_ENV"
 ```
 
-If `userId` already means something else in your Unleash setup, or you want stickiness on something other than the repository, pass a custom property and set the variant's stickiness to that property in Unleash. The property must exist as a context field in Unleash with stickiness enabled:
+Pass the same `--user-id` to `check`, so that a gradual rollout on default stickiness puts the gate and the variant in the same bucket.
+
+If `userId` already means something else in your Unleash setup, or you want stickiness on something other than the repository, pass a custom property, to `check` too, and set the variant's stickiness to that property in Unleash. The property must exist as a context field in Unleash with stickiness enabled:
 
 ```sh
 releash variant checkout-redesign --properties repo="$GITHUB_REPOSITORY" >> "$GITHUB_ENV"
@@ -170,9 +172,11 @@ Every variable name is the prefix followed by a suffix:
 
 The default prefix is `RELEASH_` followed by the flag name normalised as below and a trailing `_`, e.g. `RELEASH_CHECKOUT_REDESIGN_`. `--prefix` must match `^[A-Z][A-Z0-9_]*$`. An invalid or empty `--prefix` exits 2, like any invalid releash option.
 
+Flags whose names differ only in case or punctuation, such as `checkout-redesign` and `checkout.redesign`, get the same default prefix, and a flag name ending in `-payload-` can produce names that overlap another flag's payload variables. A pipeline that loads such flags together must give at least one of them its own `--prefix`; releash does not detect it, because each call sees only one flag.
+
 `--prefix` is not checked against a list of dangerous names such as `PATH` or `LD_PRELOAD`. The payload controls only the part of a name after `<prefix>PAYLOAD__`, so no payload can produce such a name with any prefix, and the three names that follow the prefix directly (`ENABLED`, `VARIANT`, `PAYLOAD`) are fixed. See [ADR 0006](../adrs/0006-variant-variable-names.md).
 
-Names are normalised by converting ASCII letters to upper case and replacing every character outside `[A-Z0-9_]` with `_`. So `image-tag`, `image.tag` and `image tag` all become `IMAGE_TAG`.
+Names are normalised by converting ASCII letters to upper case and replacing every Unicode code point outside `[A-Z0-9_]` with one `_`. So `image-tag`, `image.tag` and `image tag` all become `IMAGE_TAG`, and `größe` becomes `GR__E` (one `_` each for `ö` and `ß`, though each is two bytes in UTF-8).
 
 Variables are printed in a fixed order: `ENABLED`, `VARIANT`, `PAYLOAD`, then the flattened variables sorted by name in byte order.
 
@@ -214,11 +218,13 @@ Two paths that normalise to the same name are a collision, e.g. `{"a-b": 1, "a_b
 
 `dotenv` has no way to represent a newline in a value, and the consumers above disagree on quoting, so values are written as they are. A value that contains a newline (`\n` or `\r`) or a NUL in `dotenv` format makes the payload unusable. `shell` can represent any value but a NUL, which it rejects because shells cannot hold it in a variable.
 
+CI systems can limit how many variables or how many bytes a dotenv file or env file may hold, and every JSON leaf is one variable while `<prefix>PAYLOAD` repeats the whole payload. Keep payloads meant for pipelines small, and check the limits of the CI system before relying on a large one; releash does not know them.
+
 ## Output and exit codes
 
 The exit codes and their meanings are those of spec 0001 and [ADR 0004](../adrs/0004-exit-code-contract.md), plus exit 6. For every exit that releash controls, stdout is the variant output in the requested format and nothing else. On exit 0 it is the evaluated variant or the fallback; on any other exit it is the fallback. As in spec 0001, `--help` and `--version` are informational, and a panic that releash recovers prints the fallback and exits 1.
 
-A command line that fails to parse can stop before `--format` is read, so the format for stdout is taken from the raw arguments before they are parsed, the way releash already finds options given before the command. Arguments after `--` are not options and are not scanned.
+A command line that fails to parse can stop before `--format` is read, so the format for stdout is taken from the raw arguments before they are parsed, the way releash already finds options given before the command. The scan reads the arguments as the option parser does: an option that takes a value (every option but `--loud`, `--help` and `--version`) consumes the next argument when it is written without `=`, even if that argument starts with `-`, so `--user-id --format` sets the user ID to `--format` and is not a `--format`. Arguments after `--` are not options and are not scanned.
 
 - No `--format`: `dotenv`.
 - Every `--format` (as `--format <value>` or `--format=<value>`) names the same valid format: that format. Given twice with the same value is still exit 2, but stdout uses it.
@@ -251,8 +257,9 @@ A fallback exits 0 even when it happens after `check` answered `true`, e.g. beca
 - `variant` runs through the same evaluation as `check` and differs only in the final call: everything in spec 0001's "Unleash integration" applies as written, including memory-only storage, the `--timeout` bound and the register deadline, evaluating only after a successful first fetch, telling fetch errors from register and metrics errors, every fallback and its `--loud` line, and the wait for usage metrics.
 - Evaluation uses the SDK's `GetVariant` (`github.com/Unleash/unleash-go-sdk/v6`) with the same context as `check`, so strategy variants, feature variants, weights and stickiness behave as in every other Unleash SDK.
 - `GetVariant` reports whether the flag is enabled (`FeatureEnabled`) and the chosen variant. `ENABLED` comes from `FeatureEnabled`, so it can be `true` while `VARIANT` is `disabled`.
-- The SDK returns the same `disabled` variant for a flag that is unknown and for one that is disabled, and calls `VariantFallbackFunc` for both. releash therefore looks the flag up in the flags it fetched (`ListFeatures`): a flag that is not there is spec 0001's "flag not found" fallback and exits 0; a flag that is there and not enabled for the context exits 6.
-- A flag the SDK fails to evaluate, e.g. one whose strategy names a segment missing from the response, is reported through the SDK's error channel as for `check`, and falls back to the disabled variant with exit 0.
+- The SDK returns the same `disabled` variant for a flag that is unknown and for one that is disabled. releash therefore looks the flag up in the flags it fetched (`ListFeatures`): a flag that is not there is spec 0001's "flag not found" fallback and exits 0; a flag that is there and not enabled for the context exits 6.
+- releash sets no `VariantFallbackFunc` or fallback variant. The SDK uses either for unknown and disabled flags, and also for an enabled flag that has no variants, where a releash fallback would hide that the flag is enabled. Without one, the SDK returns its own `disabled` variant with `FeatureEnabled` set as evaluated, which is what `ENABLED` reports. The M6 spike confirms the no-variants case against Unleash 8.3.1.
+- A flag the SDK fails to evaluate, e.g. one whose strategy names a segment missing from the response, is reported through the SDK's error channel as for `check`, and falls back to the disabled variant with exit 0. Such a flag is also in the fetched flags and not enabled, so the evaluation error takes precedence: releash decides on exit 6 only after it has checked for one.
 - The default-stickiness warning reads the fetched flag's variant definitions: feature variants and the variants of each strategy carry a `stickiness`, and a value of `default` or an empty one means default stickiness.
 - Usage metrics: the SDK counts a `GetVariant` call as one evaluation of the flag and one use of the variant it returned, so Unleash's metrics show which variants pipelines were given. releash waits for the send as `check` does, and only after an evaluated answer, which here means exit 0 with an evaluated variant: a fallback and exit 6 both skip the wait.
 
@@ -284,6 +291,7 @@ A fallback exits 0 even when it happens after `check` answered `true`, e.g. beca
 - `dotenv` cannot carry multi-line values, so a multi-line string payload falls back silently in the default format. `--loud` reports it, and `--format shell` carries it.
 - Running `check` then `variant` is two runs: two fetches, two registrations and two sets of metrics. If someone turns the flag off between them, `check` says `true` and `variant` exits 6, which fails the step under `set -e`. That is rare and loud rather than wrong, but the two calls are not atomic.
 - Exit 6 breaks the rule from spec 0001 that an evaluated flag always exits 0. It is limited to `variant`, where calling it on a disabled flag means the pipeline skipped its gate.
+- Exit 6 only fails a step that sees releash's exit code. `releash variant ... >> "$GITHUB_ENV"` does, but `eval "$(releash variant ... --format shell)"` does not, because the step gets `eval`'s status. The examples capture the output first for that reason.
 - Environment variables are visible to every later step and to any process those steps start. Payloads must not hold secrets, which is already Unleash's advice.
 
 # Rationale and alternatives
@@ -296,7 +304,7 @@ A fallback exits 0 even when it happens after `check` answered `true`, e.g. beca
 - **Flattening with `__` and indices.** This is the convention of ASP.NET Core configuration and pydantic-settings, so many engineers already know it. A single `_` would make `image_tag` and `image.tag` indistinguishable from nesting. JSON Pointer (`/image/tag`) or dots are not valid in variable names.
 - **Also printing the whole payload as JSON.** Tools that understand JSON should not have to rebuild it from flattened variables, and arrays are much easier to loop over from JSON.
 - **Falling back on collisions and unrepresentable values instead of dropping or escaping them.** A partially applied payload is a configuration nobody wrote. Falling back to the disabled variant sends the pipeline to its defaults, which is the same safe outcome as spec 0001's `false`.
-- **A required, validated prefix and a fixed `PAYLOAD__` segment.** Without them, a payload key such as `path` or `ld_preload` would set `PATH` or `LD_PRELOAD` for every later step, letting anyone who can edit the flag run code in the pipeline. Because every payload variable starts with `<prefix>PAYLOAD__`, no payload can choose a name outside that namespace. The default prefix is derived from the flag name, so two flags never write the same variables.
+- **A required, validated prefix and a fixed `PAYLOAD__` segment.** Without them, a payload key such as `path` or `ld_preload` would set `PATH` or `LD_PRELOAD` for every later step, letting anyone who can edit the flag run code in the pipeline. Because every payload variable starts with `<prefix>PAYLOAD__`, no payload can choose a name outside that namespace. The default prefix is derived from the flag name, so flags with different names normally write different variables; flags whose names differ only in case or punctuation need `--prefix` (see [Variables](#variables)).
 - **`dotenv` as the default format.** It is accepted as-is by GitHub Actions, GitLab and Docker, and appending it to a file never executes anything. `shell` is opt-in because `eval` of remote data is only safe with exact quoting.
 
 # Prior art

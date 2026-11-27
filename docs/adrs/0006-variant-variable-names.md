@@ -14,7 +14,7 @@ decision-makers: Ivan Lee
 
 * A person should be able to predict a variable name from the payload without running releash.
 * Anyone who can edit a flag in Unleash must not be able to set arbitrary variables, such as `PATH` or `LD_PRELOAD`, for later pipeline steps.
-* Two flags loaded in the same pipeline must not overwrite each other's variables.
+* Two flags loaded in the same pipeline must not overwrite each other's variables by default. Flags whose names differ only in case or punctuation normalise to the same prefix and need `--prefix`, because each call sees only one flag.
 * A payload that cannot be represented must not be applied partially.
 
 ## Considered Options

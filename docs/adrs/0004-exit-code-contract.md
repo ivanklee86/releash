@@ -36,11 +36,11 @@ Chosen option: "Always print `true` or `false`; exit 0 for answers and a distinc
 | 3 | No Unleash URL or API token (missing or empty) |
 | 4 | Invalid context value, property name or Unleash URL |
 | 5 | Duplicate context field or property |
-| 6 | `releash variant` only: the flag is disabled, so the pipeline skipped its `releash check` gate ([ADR 0007](0007-refuse-variant-of-disabled-flag.md)) |
+| 6 | Proposed, not yet in effect: `releash variant` only, the flag is disabled, so the pipeline skipped its `releash check` gate ([ADR 0007](0007-refuse-variant-of-disabled-flag.md), `proposed`). Becomes part of this table when ADR 0007 is accepted. |
 
 Codes 1 and 2 follow common CLI convention. For `releash variant`, "print a boolean" means "print the disabled variant in the requested format" ([spec 0003](../specs/0003-variant-variables.md)), and the same codes apply. Exit codes are part of the public contract: new codes may be added, but existing codes keep their meaning.
 
-Use standard exit codes where possible. A new kind of error reuses an existing code only when it fits that code's documented meaning above exactly, e.g. a new kind of bad command line uses 2. Exit 1 stays reserved for internal errors and is never reused for user mistakes. Otherwise a new kind of error gets the next free code above 5. Codes reserved by shells and common tools are never used for releash errors: 126 and 127 (command not executable or not found), 128 and above (killed by a signal), and 124 (timed out, as used by `timeout(1)`). The BSD `sysexits.h` codes (64–78) were considered and not adopted, because few CI tools recognise them and the small range 0–5 is easier to remember.
+Use standard exit codes where possible. A new kind of error reuses an existing code only when it fits that code's documented meaning above exactly, e.g. a new kind of bad command line uses 2. Exit 1 stays reserved for internal errors and is never reused for user mistakes. Otherwise a new kind of error gets the next free code above 5. Codes reserved by shells and common tools are never used for releash errors: 126 and 127 (command not executable or not found), 128 and above (killed by a signal), and 124 (timed out, as used by `timeout(1)`). The BSD `sysexits.h` codes (64–78) were considered and not adopted, because few CI tools recognise them and a small range of low codes is easier to remember.
 
 ### Consequences
 

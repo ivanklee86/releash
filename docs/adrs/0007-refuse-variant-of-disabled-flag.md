@@ -35,7 +35,7 @@ Chosen option: "Print the disabled variant and exit 6", because it makes a missi
 
 ### Consequences
 
-* Good, because forgetting `check` fails the step under `set -e` the first time the flag is off.
+* Good, because forgetting `check` fails the step under `set -e` the first time the flag is off, as long as the step sees releash's exit code. `eval "$(releash variant ...)"` does not, so spec 0003's shell example captures the output before `eval`.
 * Good, because stdout is the disabled variant, so steps that ignore the exit code still fall back to their defaults.
 * Bad, because spec 0001's rule that an evaluated flag always exits 0 no longer holds for `variant`.
 * Bad, because a flag turned off between `check` and `variant` fails the step. This is rare and visible.
