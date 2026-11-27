@@ -12,7 +12,7 @@ status: active  # planned | active | done | dropped
 
 Specs (in `docs/specs`) delivered by this milestone. Check each off when it is implemented.
 
-- [x] [0001-rollout-decisions](../../specs/0001-rollout-decisions.md), sections "Command", "Output and exit codes", "Command and configuration errors", "Evaluation context" (validation and defaults only) and "Configuration". The rest is M4.
+- [ ] [0001-rollout-decisions](../../specs/0001-rollout-decisions.md), sections "Command", "Output and exit codes", "Command and configuration errors", "Evaluation context" (validation and defaults only) and "Configuration". The rest is M4.
 
 ## Exit criteria
 

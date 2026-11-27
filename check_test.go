@@ -20,13 +20,15 @@ import (
 //   - environment fallback for --url and --token, and options winning over it
 //   - missing or empty URL or token from either source exits 3
 //   - missing flag name, extra arguments, unknown or malformed options, an
-//     invalid --timeout and a repeated releash option exit 2
+//     option before the check command, an invalid --timeout and a repeated
+//     releash option exit 2
 //   - invalid context values exit 4, repeated context options exit 5
 //   - defaults are not duplicates, property values keep '=' and commas
 //   - the lowest exit code wins
 //   - every exit prints exactly "false\n", and --loud never changes stdout,
 //     the exit code or the error lines
 //   - --help shows releash options, then context options
+//   - --version prints the version and exits 0 on check as on the root
 //   - a panic prints "false" and exits 1
 
 const (
@@ -65,8 +67,10 @@ func TestCheckCommand(t *testing.T) {
 		// run with --loud added.
 		loud     bool
 		wantCode int
-		// wantStderr is the exact stderr without --loud.
-		wantStderr string
+		// wantStderr is the exact stderr without --loud. If wantStderrPrefix
+		// is set, stderr must start with it and end with wantStderr instead.
+		wantStderr       string
+		wantStderrPrefix string
 	}{
 		{name: "URL and token from the environment", env: configured, args: []string{"check", "enabled-everywhere"}, wantCode: releash.ExitOK},
 		{name: "URL and token from options", args: []string{"check", "x", "--url", testURL, "--token", testToken}, wantCode: releash.ExitOK},
@@ -106,10 +110,15 @@ func TestCheckCommand(t *testing.T) {
 		{name: "empty flag name", env: configured, args: []string{"check", ""}, wantCode: releash.ExitUsage, wantStderr: "releash: missing flag name\n" + checkHelp},
 		{name: "extra arguments", env: configured, args: []string{"check", "enabled-everywhere", "extra"}, wantCode: releash.ExitUsage, wantStderr: "releash: expected one flag name, got 2 arguments: enabled-everywhere extra\n" + checkHelp},
 		{name: "unknown option", env: configured, args: []string{"check", "x", "--no-such-option"}, wantCode: releash.ExitUsage, wantStderr: "releash: unknown flag: --no-such-option\n" + checkHelp},
-		{name: "--version is not a check option", env: configured, args: []string{"check", "x", "--version"}, wantCode: releash.ExitUsage, wantStderr: "releash: unknown flag: --version\n" + checkHelp},
 		// Appending --loud would make it the value of --env.
 		{name: "option without a value", env: configured, args: []string{"check", "x", "--env"}, loud: true, wantCode: releash.ExitUsage, wantStderr: "releash: flag needs an argument: --env\n" + checkHelp},
-		{name: "--loud with a non-boolean value", env: configured, args: []string{"check", "x", "--loud=maybe"}, loud: true, wantCode: releash.ExitUsage},
+		// pflag's message continues with strconv's error, which is not ours.
+		{name: "--loud with a non-boolean value", env: configured, args: []string{"check", "x", "--loud=maybe"}, loud: true, wantCode: releash.ExitUsage, wantStderrPrefix: `releash: invalid argument "maybe" for "--loud" flag`, wantStderr: checkHelp},
+		// Options before the check command are rejected whether or not they
+		// take a value, and the answer contract still holds.
+		{name: "boolean option before check", env: configured, args: []string{"--loud", "check", "x"}, loud: true, wantCode: releash.ExitUsage, wantStderr: "releash: --loud given before check; put options after 'check <flag>'\n" + checkHelp},
+		{name: "option with a value before check", env: configured, args: []string{"--url", testURL, "check", "x"}, wantCode: releash.ExitUsage, wantStderr: "releash: --url given before check; put options after 'check <flag>'\n" + checkHelp},
+		{name: "option with = before check", env: configured, args: []string{"--env=staging", "check", "x"}, wantCode: releash.ExitUsage, wantStderr: "releash: --env=staging given before check; put options after 'check <flag>'\n" + checkHelp},
 		{name: "--timeout abc", env: configured, args: []string{"check", "x", "--timeout", "abc"}, wantCode: releash.ExitUsage, wantStderr: "releash: invalid --timeout \"abc\": must be a positive Go duration, e.g. 5s\n" + checkHelp},
 		{name: "--timeout 0", env: configured, args: []string{"check", "x", "--timeout", "0"}, wantCode: releash.ExitUsage, wantStderr: "releash: invalid --timeout \"0\": must be a positive Go duration, e.g. 5s\n" + checkHelp},
 		{name: "--timeout -1s", env: configured, args: []string{"check", "x", "--timeout=-1s"}, wantCode: releash.ExitUsage, wantStderr: "releash: invalid --timeout \"-1s\": must be a positive Go duration, e.g. 5s\n" + checkHelp},
@@ -172,9 +181,9 @@ func TestCheckCommand(t *testing.T) {
 				if suffix != "" && tt.wantCode == releash.ExitOK {
 					wantStderr = loudLine
 				}
-				if tt.name == "--loud with a non-boolean value" {
-					assert.True(t, strings.HasPrefix(stderr.String(), `releash: invalid argument "maybe" for "--loud" flag`), "stderr: %q", stderr.String())
-					assert.True(t, strings.HasSuffix(stderr.String(), checkHelp), "stderr: %q", stderr.String())
+				if tt.wantStderrPrefix != "" {
+					assert.True(t, strings.HasPrefix(stderr.String(), tt.wantStderrPrefix), "stderr: %q", stderr.String())
+					assert.True(t, strings.HasSuffix(stderr.String(), wantStderr), "stderr: %q", stderr.String())
 					return
 				}
 				assert.Equal(t, wantStderr, stderr.String(), "stderr")
@@ -203,7 +212,7 @@ func TestCheckHelp(t *testing.T) {
 				"--url url", "--token token", "--timeout duration", "--loud",
 				"Context options:",
 				"--env name", "--app-name name", "--user-id id", "--session-id id", "--remote-address ip", "--current-time timestamp", "--properties name=value",
-				"-h, --help",
+				"-h, --help", "-v, --version",
 			}
 			rest := out
 			for _, w := range want {
@@ -218,6 +227,30 @@ func TestCheckHelp(t *testing.T) {
 			assert.Contains(t, out, `(default "5s")`)
 			assert.Contains(t, out, "UNLEASH_URL")
 			assert.Contains(t, out, "UNLEASH_API_TOKEN")
+		})
+	}
+}
+
+// --version is informational on check as on the root command (spec 0001): it
+// prints the version alone, exits 0, and skips validation, so it works with
+// nothing configured and with a missing or invalid flag name.
+func TestCheckVersion(t *testing.T) {
+	for _, args := range [][]string{
+		{"check", "--version"},
+		{"check", "x", "--version"},
+		{"check", "x", "extra", "--version", "--timeout", "abc"},
+		{"--version", "check", "x"},
+		{"--version"},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			unleashEnv(t, nil)
+			var stdout, stderr bytes.Buffer
+
+			code := execute(args, &stdout, &stderr, "v1.2.3")
+
+			assert.Equal(t, releash.ExitOK, code, "exit code")
+			assert.Equal(t, "releash version v1.2.3\n", stdout.String(), "stdout")
+			assert.Empty(t, stderr.String(), "stderr")
 		})
 	}
 }

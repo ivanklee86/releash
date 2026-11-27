@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"runtime/debug"
+	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -62,7 +63,8 @@ func (e exitCodeError) Error() string {
 
 // run executes root with args and returns its exit code. It is the only place
 // that turns cobra errors and panics into exit codes: errors from parsing the
-// command line exit 2, and a panic in a command is reported on stderr and
+// command line exit 2, as does an option given before the check command (see
+// optionBeforeCheck), and a panic in a command is reported on stderr and
 // exits 1 (ADR 0004), rather than Go's default of 2, which would look like a
 // bad command line. For a command with answerAnnotation, both also print
 // "false" on stdout.
@@ -79,6 +81,12 @@ func run(root *cobra.Command, args []string, stdout, stderr io.Writer) (code int
 			_, _ = fmt.Fprintf(stderr, "Error: internal error: %v\n", p)
 		}
 	}()
+
+	if opt, ok := optionBeforeCheck(args); ok {
+		_, _ = fmt.Fprintf(stderr, "releash: %s given before check; put options after 'check <flag>'\nRun 'releash check --help' for usage.\n", opt)
+		_, _ = fmt.Fprintln(stdout, "false")
+		return releash.ExitUsage
+	}
 
 	root.SetArgs(args)
 	cmd, err := root.ExecuteC()
@@ -98,6 +106,28 @@ func run(root *cobra.Command, args []string, stdout, stderr io.Writer) (code int
 	return releash.ExitUsage
 }
 
+// optionBeforeCheck returns the first option that comes before the check
+// command in args, other than --help, -h and --version. The root command has
+// no other options, and cobra's lookup of the subcommand guesses whether an
+// unknown option takes a value, so without this some such invocations would
+// run check and others would fail on the root command with empty stdout.
+func optionBeforeCheck(args []string) (string, bool) {
+	i := slices.Index(args, "check")
+	if i < 0 {
+		return "", false
+	}
+	for _, a := range args[:i] {
+		switch {
+		case a == "--":
+			return "", false
+		case a == "--help", a == "-h", a == "--version":
+		case strings.HasPrefix(a, "-"):
+			return a, true
+		}
+	}
+	return "", false
+}
+
 // answers reports whether cmd carries answerAnnotation.
 func answers(cmd *cobra.Command) bool {
 	if cmd == nil {
@@ -108,8 +138,8 @@ func answers(cmd *cobra.Command) bool {
 }
 
 // NewRootCommand returns the releash root command, which prints help when run
-// without a subcommand and reports version for --version. Its subcommands
-// write through r.
+// without a subcommand. It and its check command print "releash version
+// <version>" for --version. Its subcommands write through r.
 func NewRootCommand(r *releash.Releash, version string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "releash",
@@ -134,13 +164,17 @@ func NewRootCommand(r *releash.Releash, version string) *cobra.Command {
 		},
 	}
 
-	cmd.AddCommand(newCheckCommand(r))
+	// Subcommands inherit the template. The default one would print
+	// "releash check version ..." for check.
+	cmd.SetVersionTemplate("releash version {{.Version}}\n")
+	cmd.AddCommand(newCheckCommand(r, version))
 	return cmd
 }
 
 // newCheckCommand returns the check command, which maps its arguments and
-// options to releash.CheckOptions and calls r.Check.
-func newCheckCommand(r *releash.Releash) *cobra.Command {
+// options to releash.CheckOptions and calls r.Check. With --version it prints
+// version and exits 0 without validating anything, as spec 0001 allows.
+func newCheckCommand(r *releash.Releash, version string) *cobra.Command {
 	var opts releash.CheckOptions
 	given := make(map[string]int)
 
@@ -154,6 +188,7 @@ and exits 0; --loud says why on stderr.
 A mistake in the command or its configuration prints false, writes an error
 to stderr and exits non-zero: 2 for a bad command line, 3 for a missing
 Unleash URL or token, 4 for an invalid value and 5 for a value given twice.`,
+		Version:     version,
 		Args:        checkArgs,
 		Annotations: map[string]string{answerAnnotation: ""},
 		RunE: func(_ *cobra.Command, args []string) error {
@@ -176,7 +211,7 @@ Unleash URL or token, 4 for an invalid value and 5 for a value given twice.`,
 	f.StringVar(&opts.AppName, releash.OptionAppName, releash.DefaultAppName, "appName in the context, and the `name` releash registers with")
 	f.StringVar(&opts.UserID, releash.OptionUserID, "", "userId in the context, as an `id`")
 	f.StringVar(&opts.SessionID, releash.OptionSessionID, "", "sessionId in the context, as an `id`")
-	f.StringVar(&opts.RemoteAddress, releash.OptionRemoteAddress, "", "remoteAddress in the context, as an IPv4 or IPv6 `ip` address")
+	f.StringVar(&opts.RemoteAddress, releash.OptionRemoteAddress, "", "remoteAddress in the context, as an `ip` address, IPv4 or IPv6")
 	f.StringVar(&opts.CurrentTime, releash.OptionCurrentTime, "", "currentTime in the context, as an RFC 3339 `timestamp`")
 	f.StringArrayVar(&opts.Properties, releash.OptionProperties, nil, "custom property in the context, as `name=value`; repeat for more")
 
@@ -218,7 +253,7 @@ func checkUsage(cmd *cobra.Command) error {
 	}{
 		{"Releash options", releash.ReleashOptions()},
 		{"Context options", releash.ContextOptions()},
-		{"Other options", []string{"help"}},
+		{"Other options", []string{"help", "version"}},
 	}
 	for _, g := range groups {
 		fs := pflag.NewFlagSet(g.title, pflag.ContinueOnError)

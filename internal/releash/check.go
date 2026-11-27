@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/netip"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -104,14 +105,15 @@ type checkRequest struct {
 }
 
 // evalContext is the Unleash context a flag is evaluated against. Empty
-// strings and a zero currentTime mean unset.
+// strings and a nil currentTime mean unset. currentTime is a pointer because
+// the zero time is a valid --current-time.
 type evalContext struct {
 	environment   string
 	appName       string
 	userID        string
 	sessionID     string
 	remoteAddress string
-	currentTime   time.Time
+	currentTime   *time.Time
 	properties    map[string]string
 }
 
@@ -225,11 +227,11 @@ func validateCheck(opts CheckOptions) (checkRequest, []problem) {
 		}
 	}
 	if given(OptionCurrentTime) {
-		t, err := time.Parse(time.RFC3339Nano, opts.CurrentTime)
-		if err != nil {
+		if t, err := parseRFC3339(opts.CurrentTime); err != nil {
 			report(ExitInvalid, "invalid --%s %q: must be an RFC 3339 timestamp", OptionCurrentTime, opts.CurrentTime)
+		} else {
+			req.context.currentTime = &t
 		}
-		req.context.currentTime = t
 	}
 
 	properties := make(map[string]string, len(opts.Properties))
@@ -273,5 +275,44 @@ func parseUnleashURL(s string) (*url.URL, error) {
 	if (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" {
 		return nil, fmt.Errorf("%q is not an absolute http or https URL", s)
 	}
+	// url.Parse accepts any run of digits as a port.
+	if p := u.Port(); p != "" {
+		if n, err := strconv.Atoi(p); err != nil || n < 1 || n > 65535 {
+			return nil, fmt.Errorf("%q has an invalid port", s)
+		}
+	}
 	return u, nil
+}
+
+// parseRFC3339 parses s as an RFC 3339 date-time. It differs from time.Parse
+// with time.RFC3339Nano where that differs from the RFC: it accepts a
+// lowercase "t" and "z" and a leap second (:60, read as the first instant of
+// the next minute, since time.Time has no leap seconds), and rejects offsets
+// whose hours exceed 23 or whose minutes exceed 59.
+func parseRFC3339(s string) (time.Time, error) {
+	s = strings.ToUpper(s)
+	if !strings.HasSuffix(s, "Z") {
+		// A numeric offset is the last six characters, "+hh:mm" or "-hh:mm".
+		if len(s) < 6 || (s[len(s)-6] != '+' && s[len(s)-6] != '-') || s[len(s)-3] != ':' {
+			return time.Time{}, fmt.Errorf("%q has no valid time offset", s)
+		}
+		hh, errH := strconv.Atoi(s[len(s)-5 : len(s)-3])
+		mm, errM := strconv.Atoi(s[len(s)-2:])
+		if errH != nil || errM != nil || hh > 23 || mm > 59 {
+			return time.Time{}, fmt.Errorf("%q has an invalid time offset", s)
+		}
+	}
+	// "YYYY-MM-DDTHH:MM:60" puts the seconds at bytes 17 and 18.
+	leap := len(s) > 19 && s[16] == ':' && s[17:19] == "60"
+	if leap {
+		s = s[:17] + "59" + s[19:]
+	}
+	t, err := time.Parse(time.RFC3339Nano, s)
+	if err != nil {
+		return time.Time{}, err
+	}
+	if leap {
+		t = t.Add(time.Second)
+	}
+	return t, nil
 }

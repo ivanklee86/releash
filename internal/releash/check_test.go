@@ -13,11 +13,13 @@ import (
 
 // Cases, from the exit code table and test plan in spec 0001:
 //   - valid: minimal options, every option once, options set to their
-//     defaults, valid durations, timestamps and addresses, '=' in property
+//     defaults, valid durations, timestamps (including lowercase, leap seconds
+//     and an explicit zero time) and addresses, '=' in property
 //     values, empty property values; silent without --loud, one line with it
 //   - 2: missing flag name, invalid --timeout, each releash option twice
 //   - 3: missing URL, missing token
-//   - 4: malformed URL, invalid --current-time and --remote-address, empty
+//   - 4: malformed URL or port, invalid --current-time (including offsets
+//     outside the RFC) and --remote-address, empty
 //     --env and --app-name, property without '=', empty property name,
 //     property named after each standard field (with the hint)
 //   - 5: each context option twice, a repeated property name
@@ -129,6 +131,10 @@ func TestCheck(t *testing.T) {
 		{name: "http URL", opts: with(func(o *CheckOptions) { o.URL = "http://localhost:4242/api" }), wantCode: ExitOK},
 		{name: "IPv6 remote address", opts: with(set(OptionRemoteAddress, remoteAddress, "::1")), wantCode: ExitOK},
 		{name: "current time with fraction and offset", opts: with(set(OptionCurrentTime, currentTime, "2026-11-27T10:00:00.123+01:00")), wantCode: ExitOK},
+		{name: "current time in lowercase", opts: with(set(OptionCurrentTime, currentTime, "2026-01-01t00:00:00z")), wantCode: ExitOK},
+		{name: "current time on a leap second", opts: with(set(OptionCurrentTime, currentTime, "2016-12-31T23:59:60Z")), wantCode: ExitOK},
+		{name: "current time with the largest offsets", opts: with(set(OptionCurrentTime, currentTime, "2026-01-01T00:00:00-23:59")), wantCode: ExitOK},
+		{name: "URL with port 65535", opts: with(func(o *CheckOptions) { o.URL = "http://localhost:65535/api" }), wantCode: ExitOK},
 		{name: "empty user and session IDs", opts: with(all(
 			set(OptionUserID, func(o *CheckOptions) *string { return &o.UserID }, ""),
 			set(OptionSessionID, func(o *CheckOptions) *string { return &o.SessionID }, ""),
@@ -181,6 +187,42 @@ func TestCheck(t *testing.T) {
 			opts:       with(set(OptionCurrentTime, currentTime, "tomorrow")),
 			wantCode:   ExitInvalid,
 			wantStderr: []string{`releash: invalid --current-time "tomorrow": must be an RFC 3339 timestamp`},
+		},
+		{
+			name:       "current time with a 24-hour offset",
+			opts:       with(set(OptionCurrentTime, currentTime, "2026-01-01T00:00:00+24:00")),
+			wantCode:   ExitInvalid,
+			wantStderr: []string{`releash: invalid --current-time "2026-01-01T00:00:00+24:00": must be an RFC 3339 timestamp`},
+		},
+		{
+			name:       "current time with 60 offset minutes",
+			opts:       with(set(OptionCurrentTime, currentTime, "2026-01-01T00:00:00+23:60")),
+			wantCode:   ExitInvalid,
+			wantStderr: []string{`releash: invalid --current-time "2026-01-01T00:00:00+23:60": must be an RFC 3339 timestamp`},
+		},
+		{
+			name:       "current time without an offset",
+			opts:       with(set(OptionCurrentTime, currentTime, "2026-01-01T00:00:00")),
+			wantCode:   ExitInvalid,
+			wantStderr: []string{`releash: invalid --current-time "2026-01-01T00:00:00": must be an RFC 3339 timestamp`},
+		},
+		{
+			name:       "current time with second 61",
+			opts:       with(set(OptionCurrentTime, currentTime, "2016-12-31T23:59:61Z")),
+			wantCode:   ExitInvalid,
+			wantStderr: []string{`releash: invalid --current-time "2016-12-31T23:59:61Z": must be an RFC 3339 timestamp`},
+		},
+		{
+			name:       "URL with a port above 65535",
+			opts:       with(func(o *CheckOptions) { o.URL = "http://host:99999/api" }),
+			wantCode:   ExitInvalid,
+			wantStderr: []string{`releash: invalid Unleash URL "http://host:99999/api": must be an absolute http or https URL`},
+		},
+		{
+			name:       "URL with port 0",
+			opts:       with(func(o *CheckOptions) { o.URL = "http://host:0/api" }),
+			wantCode:   ExitInvalid,
+			wantStderr: []string{`releash: invalid Unleash URL "http://host:0/api": must be an absolute http or https URL`},
 		},
 		{
 			name:       "invalid remote address",
@@ -353,7 +395,37 @@ func TestValidateCheckAppliesDefaults(t *testing.T) {
 	assert.Equal(t, "production", req.context.environment)
 	assert.Equal(t, "releash", req.context.appName)
 	assert.Empty(t, req.context.remoteAddress)
-	assert.True(t, req.context.currentTime.IsZero())
+	assert.Nil(t, req.context.currentTime, "currentTime is left to the time of the check")
+}
+
+func TestValidateCheckKeepsAGivenZeroCurrentTime(t *testing.T) {
+	req, problems := validateCheck(with(set(OptionCurrentTime, currentTime, "0001-01-01T00:00:00Z")))
+
+	require.Empty(t, problems)
+	require.NotNil(t, req.context.currentTime, "an explicit zero time must not read as unset")
+	assert.True(t, req.context.currentTime.Equal(time.Time{}))
+}
+
+func TestValidateCheckParsesRFC3339Variants(t *testing.T) {
+	tests := []struct {
+		in   string
+		want time.Time
+	}{
+		{"2026-01-01t10:00:00z", time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC)},
+		// time.Time has no leap seconds, so :60 is the next minute's first instant.
+		{"2016-12-31T23:59:60Z", time.Date(2017, 1, 1, 0, 0, 0, 0, time.UTC)},
+		{"2016-12-31T23:59:60.5Z", time.Date(2017, 1, 1, 0, 0, 0, 500_000_000, time.UTC)},
+		{"2026-01-01T00:00:00+23:59", time.Date(2025, 12, 31, 0, 1, 0, 0, time.UTC)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.in, func(t *testing.T) {
+			req, problems := validateCheck(with(set(OptionCurrentTime, currentTime, tt.in)))
+
+			require.Empty(t, problems)
+			require.NotNil(t, req.context.currentTime)
+			assert.True(t, tt.want.Equal(*req.context.currentTime), "got %v, want %v", *req.context.currentTime, tt.want)
+		})
+	}
 }
 
 func TestValidateCheckUsesGivenValues(t *testing.T) {
@@ -373,7 +445,8 @@ func TestValidateCheckUsesGivenValues(t *testing.T) {
 	assert.Equal(t, "staging", req.context.environment)
 	assert.Equal(t, "pipeline", req.context.appName)
 	assert.Equal(t, "192.168.1.10", req.context.remoteAddress)
-	assert.Equal(t, time.Date(2099, 1, 2, 3, 4, 5, 0, time.UTC), req.context.currentTime)
+	require.NotNil(t, req.context.currentTime)
+	assert.Equal(t, time.Date(2099, 1, 2, 3, 4, 5, 0, time.UTC), *req.context.currentTime)
 	assert.Equal(t, map[string]string{"build": "a=b", "empty": "", "region": "eu"}, req.context.properties)
 	assert.Equal(t, "https://unleash.example.com/api", req.url.String())
 }

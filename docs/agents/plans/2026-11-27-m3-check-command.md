@@ -12,8 +12,11 @@ Decisions made while building PR 1, within the ones below:
 - `CheckOptions.Given` counts how many times each option was set. `main.go` fills it by wrapping each flag's `pflag.Value`. A value that `bindFlags` sets from `UNLEASH_URL` or `UNLEASH_API_TOKEN` counts once, which only happens when the option was not given, so it never makes a repeat. `--properties` is not wrapped: it may be repeated, and repeats are found by property name.
 - `--properties` is a `StringArray` flag, not a `StringSlice`, so values containing commas are kept whole.
 - Check reports every problem it finds, one line starting with `releash:` each, and exits with the lowest code. The `Run 'releash check --help' for usage.` line is added when the exit code is 2.
-- `releash check --version` is an unknown option of `check` (exit 2, `false` on stdout); `--version` belongs to the root command only.
+- `releash check --version` prints the version and exits 0, like `releash --version`, because spec 0001 makes `--help` and `--version` the two informational exceptions for `releash check`. The check command sets cobra's `Version`, and the root command's version template, which the check command inherits, prints `releash version <version>` for both.
 - `releash check ""` counts as a missing flag name (exit 2).
+- An option before the `check` command, other than `--help`, `-h` and `--version`, exits 2 with `false` on stdout. cobra's subcommand lookup guesses whether an unknown option takes a value, so without this rule `releash --url <url> check x` ran the check while `releash --loud check x` failed on the root command with empty stdout.
+- `--current-time` follows RFC 3339 itself rather than Go's `time.RFC3339Nano` layout: a lowercase `t` and `z` and a leap second (`:60`, read as the next minute's first instant) are accepted, and offsets with hours above 23 or minutes above 59 exit 4. An explicit zero time is kept, not mistaken for an unset option.
+- A `--url` port outside 1 to 65535 is an invalid URL (exit 4).
 
 ## How to work through this plan
 
@@ -35,8 +38,8 @@ Decisions made while planning:
 - A panic during `releash check` prints `false` and exits 1.
 - stderr lines start with `releash:`, as in spec 0001's fallback example. Exit-2 errors add one line pointing at `releash check --help`.
 - The temporary `--loud` line is `releash: evaluation is not implemented yet (M4); returning false`. M4 removes it.
-- `--current-time` accepts RFC 3339 (`time.RFC3339Nano`, which also accepts whole seconds). `--remote-address` accepts IPv4 and IPv6 addresses (`net/netip.ParseAddr`, without a zone).
-- `--url` must be an absolute `http` or `https` URL with a host.
+- `--current-time` accepts RFC 3339 (see the PR 1 decisions above for where it differs from `time.RFC3339Nano`). `--remote-address` accepts IPv4 and IPv6 addresses (`net/netip.ParseAddr`, without a zone).
+- `--url` must be an absolute `http` or `https` URL with a host and, if it has a port, a port from 1 to 65535.
 - The M3 scenario stubs in `main_integration_test.go` become real tests in this PR. They need no Unleash, so they move to ordinary unit tests unless they need the stack, and the stubs are removed.
 
 ## Steps
