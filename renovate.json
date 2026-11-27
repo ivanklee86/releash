@@ -55,6 +55,27 @@
       "groupName": "ci"
     },
     {
+      "description": "binfmt tags carry a qemu-v prefix that Docker versioning does not read as a version",
+      "matchDatasources": [
+        "docker"
+      ],
+      "matchPackageNames": [
+        "tonistiigi/binfmt"
+      ],
+      "versioning": "regex:^qemu-v(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)$"
+    },
+    {
+      "description": "The QEMU and BuildKit images that the release-check job builds the images with",
+      "matchDatasources": [
+        "docker"
+      ],
+      "matchPackageNames": [
+        "tonistiigi/binfmt",
+        "moby/buildkit"
+      ],
+      "groupName": "ci"
+    },
+    {
       "matchManagers": [
         "github-actions",
         "pre-commit"
@@ -141,6 +162,17 @@
         "[A-Z0-9_]+_VERSION: ['\"]?(?<currentValue>v?\\d[^'\"\\s]*)['\"]? # (?<datasource>[^/\\s]+)/(?<depName>\\S+)",
         "version: ['\"]?(?<currentValue>v?\\d[^'\"\\s]*)['\"]? # (?<datasource>[^/\\s]+)/(?<depName>k1LoW/octocov)\\s"
       ]
+    },
+    {
+      "customType": "regex",
+      "description": "Images that actions run, set by tag and digest through an action's image input (setup-qemu-action) or its driver-opts (setup-buildx-action)",
+      "managerFilePatterns": [
+        "/^\\.github/workflows/[^/]+\\.ya?ml$/"
+      ],
+      "matchStrings": [
+        "image[:=] ?(?<depName>[a-z0-9./-]+):(?<currentValue>[^\\s@]+)@(?<currentDigest>sha256:[a-f0-9]{64})"
+      ],
+      "datasourceTemplate": "docker"
     }
   ]
 }
