@@ -54,7 +54,9 @@ func TestUserTargetedRolloutOpensOnlyForAllowlistedUsers(t *testing.T) {
 }
 
 func TestScheduledReleaseFollowsTheClock(t *testing.T) {
-	t.Skip("M4: without --current-time, date-after-past and date-before-future are true, date-after-future and date-before-past are false")
+	// The 2020 and 2099 fixtures would pass with any clock this century, so they
+	// cannot show that the time of the check is the one used.
+	t.Skip("M4: creates flags with DATE_AFTER and DATE_BEFORE constraints a few minutes either side of now through the Admin API with integration.AdminToken, and without --current-time each gives the result for the time of the check; the 2020 and 2099 fixtures (date-after-past, date-before-future true; date-after-future, date-before-past false) are a coarse check only")
 }
 
 func TestScheduledReleaseCanBeCheckedAheadOfTime(t *testing.T) {
@@ -91,4 +93,8 @@ func TestUsageMetricsAreSentBeforeExit(t *testing.T) {
 
 func TestFailingMetricsEndpointDoesNotDelayTheGate(t *testing.T) {
 	t.Skip("M4: a failing or hanging metrics endpoint changes neither stdout nor the exit code, and exit stays within --timeout")
+}
+
+func TestPanicDuringCheckStillPrintsFalse(t *testing.T) {
+	t.Skip("M3: a panic on releash's own goroutine during check prints false, writes the error to stderr without --loud, and exits 1")
 }

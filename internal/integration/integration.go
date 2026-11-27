@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -26,17 +27,19 @@ const (
 // Environments lists every environment of the local stack.
 var Environments = []string{Development, Production}
 
-// Defaults are the fixed dev-only values from docker-compose.yaml. They are
-// not secrets and only work on the local stack.
+// Defaults are the fixed dev-only values from docker-compose.yaml and
+// .env.example. They are not secrets and only work on the local stack.
+// DefaultURL is the API URL, with /api, as UNLEASH_URL is everywhere.
 const (
-	DefaultURL              = "http://localhost:4242"
+	DefaultURL              = "http://localhost:4242/api"
 	DefaultAdminToken       = "*:*.releash-dev-admin-not-a-secret"
 	DefaultDevelopmentToken = "default:development.releash-dev-not-a-secret"
 	DefaultProductionToken  = "default:production.releash-dev-not-a-secret"
 )
 
-// URL returns the base URL of Unleash from UNLEASH_URL, or DefaultURL when
-// the variable is unset or empty.
+// URL returns the Unleash API URL, including /api as in spec 0001, from
+// UNLEASH_URL, or DefaultURL when the variable is unset or empty. Client API
+// paths are relative to it, e.g. URL()+"/client/features".
 func URL() string {
 	return envOr("UNLEASH_URL", DefaultURL)
 }
@@ -65,16 +68,23 @@ func ClientToken(t testing.TB, env string) string {
 }
 
 // RequireUnleash fails the test unless Unleash answers its health check at
-// URL within a few seconds. Call it first in every test that talks to the
-// stack, so a stopped stack gives one clear message instead of a timeout.
+// the server root (URL without /api) within a few seconds. Call it first in
+// every test that talks to the stack, so a stopped stack gives one clear
+// message instead of a timeout.
 func RequireUnleash(t testing.TB) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 
-	if err := checkHealth(ctx, URL()); err != nil {
+	if err := checkHealth(ctx, serverRoot(URL())); err != nil {
 		t.Fatalf("Unleash is not reachable at %s: %v\nStart the local stack with `task services`.", URL(), err)
 	}
+}
+
+// serverRoot returns apiURL without its trailing /api. Unleash serves /health
+// at the server root, and /api/health needs a token.
+func serverRoot(apiURL string) string {
+	return strings.TrimSuffix(strings.TrimSuffix(apiURL, "/"), "/api")
 }
 
 func checkHealth(ctx context.Context, baseURL string) error {

@@ -19,13 +19,44 @@ type Fixtures struct {
 	Flags []Flag `json:"flags"`
 }
 
-// Flag is one fixture flag. Strategies are kept as raw JSON, because tests
-// assert on evaluation results rather than on strategy definitions.
+// Flag is one fixture flag: how the seed creates it, and so what the Client
+// API should return for it.
 type Flag struct {
-	Name        string            `json:"name"`
-	Description string            `json:"description"`
-	Enabled     map[string]bool   `json:"enabled"`
-	Strategies  []json.RawMessage `json:"strategies"`
+	// Name is the flag name in Unleash, and says what the flag tests.
+	Name string `json:"name"`
+	// Description is the flag description the seed sets in Unleash.
+	Description string `json:"description"`
+	// Enabled says, per environment name, whether the flag is switched on.
+	// Use EnabledIn rather than reading it directly.
+	Enabled map[string]bool `json:"enabled"`
+	// Strategies are the activation strategies the seed adds to the flag in
+	// every environment, in order.
+	Strategies []Strategy `json:"strategies"`
+}
+
+// Strategy is one activation strategy of a fixture flag, in the shape both
+// the Admin API and the Client API use.
+type Strategy struct {
+	// Name is the strategy type, such as flexibleRollout or remoteAddress.
+	Name string `json:"name"`
+	// Parameters are the strategy's parameters. Unleash sends every value as
+	// a string.
+	Parameters map[string]string `json:"parameters,omitempty"`
+	// Constraints must all match for the strategy to apply.
+	Constraints []Constraint `json:"constraints,omitempty"`
+}
+
+// Constraint is one constraint of a strategy.
+type Constraint struct {
+	// ContextName is the context field the constraint reads, such as region
+	// or currentTime.
+	ContextName string `json:"contextName"`
+	// Operator is the Unleash operator, such as IN or DATE_AFTER.
+	Operator string `json:"operator"`
+	// Values holds the operands of list operators such as IN.
+	Values []string `json:"values,omitempty"`
+	// Value holds the operand of single-value operators such as DATE_AFTER.
+	Value string `json:"value,omitempty"`
 }
 
 // EnabledIn reports whether the flag is switched on in env. It says nothing

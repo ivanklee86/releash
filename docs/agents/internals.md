@@ -188,23 +188,23 @@ releash has two kinds of test. Unit tests are plain `_test.go` files and need ne
 | `internal/releash/scenarios_integration_test.go` | Release scenarios from spec 0001 that drive a `Releash` built with `NewWithConfig`, with buffers for `Out` and `Err`, and assert stdout, stderr and the exit code. |
 | `main_integration_test.go` | A few pipeline scenarios that go through the root command, to check that options and environment variables reach the config. They have to be in package `main`. |
 
-Scenarios are named after how a pipeline uses releash, e.g. `TestDeployGateStaysClosedWhenTokenIsRejected` or `TestRegionGatedRolloutOpensOnlyForEU`. In M2 they are stubs that skip with a message naming the milestone that fills them in (M3 for the command contract, M4 for evaluation) and what the test will assert. There is no stub for a flag in a project the token cannot see, because open-source Unleash has only the `default` project; the unknown-flag scenario covers it.
+Scenarios are named after how a pipeline uses releash, e.g. `TestDeployGateStaysClosedWhenTokenIsRejected` or `TestRegionGatedRolloutOpensOnlyForEU`. In M2 they are stubs that skip with a message naming the milestone that fills them in (M3 for the command contract, M4 for evaluation) and what the test will assert. There is no stub for a flag in a project the token cannot see, because open-source Unleash has only the `default` project; the unknown-flag scenario covers it. Scenarios that need a flag the fixtures cannot hold, such as date constraints a few minutes either side of the check or constraints on `environment` and `appName`, will create it through the Admin API with `AdminToken`.
 
 The helpers in `internal/integration`:
 
 | Helper | What it does |
 |---|---|
-| `URL`, `AdminToken`, `ClientToken(t, env)` | Read `UNLEASH_URL`, `UNLEASH_ADMIN_TOKEN`, `UNLEASH_DEVELOPMENT_TOKEN` and `UNLEASH_PRODUCTION_TOKEN`, falling back to the compose values when unset or empty. `Environments` lists `development` and `production`. |
-| `RequireUnleash(t)` | Fails the test with a message naming `task services` unless `GET /health` succeeds within 5 seconds. Call it first in every test that talks to the stack. |
-| `LoadFixtures(t)` | Reads `unleash/fixtures.json`. `Fixtures.Flag(t, name)` fails the test if the fixture is missing, so renaming a fixture breaks the tests that use it, and `Flag.EnabledIn(env)` says whether the flag is switched on in an environment. |
+| `URL`, `AdminToken`, `ClientToken(t, env)` | Read `UNLEASH_URL`, `UNLEASH_ADMIN_TOKEN`, `UNLEASH_DEVELOPMENT_TOKEN` and `UNLEASH_PRODUCTION_TOKEN`, falling back to the compose values when unset or empty. `URL` is the API URL with `/api` (default `http://localhost:4242/api`), so Client API paths are appended to it, e.g. `URL() + "/client/features"`. `Environments` lists `development` and `production`. |
+| `RequireUnleash(t)` | Fails the test with a message naming `task services` unless `GET /health` at the server root (`URL` without `/api`) succeeds within 5 seconds. Call it first in every test that talks to the stack. |
+| `LoadFixtures(t)` | Reads `unleash/fixtures.json`. `Fixtures.Flag(t, name)` fails the test if the fixture is missing, so renaming a fixture breaks the tests that use it, and `Flag.EnabledIn(env)` says whether the flag is switched on in an environment. Strategies are typed (`Strategy`, `Constraint`), so tests can compare them with what Unleash returns. |
 | `UnresponsiveServer(t)` | Starts a loopback TCP server that accepts connections and never responds, and returns its URL. It is closed when the test ends. |
 
-The one integration test that passes in M2, `TestClientTokensSeeTheFixtureFlags`, fetches `/api/client/features` with each client token and checks that every fixture flag is visible, that no other flags are, and that each is switched on or off as the fixture says for that environment. It catches a seed that drifted from the fixtures, for example after an Unleash upgrade.
+The one integration test that passes in M2, `TestClientTokensSeeTheFixtureFlags`, fetches `/api/client/features` with each client token and checks that every fixture flag is visible, that no other flags are, that each is switched on or off as the fixture says for that environment, and that its strategies match the fixture: strategy names, parameters, and each constraint's context field, operator and values. It catches a seed that drifted from the fixtures, for example after an Unleash upgrade.
 
 | Task | What it does |
 |---|---|
 | `go:test` | Unit tests only: `go test -v ./...`. |
 | `go:test-integration` | Unit and integration tests: `go test -tags integration -count=1 -v ./...`. `-count=1` turns off go test's result cache, which cannot see changes to the stack. Start the stack with `task services` first. |
-| `go:test-ci` | The same tests, with a coverage profile in `coverage.out` and a JUnit report in `report.xml` from go-junit-report (installed by `go:install-ci`). It runs with `pipefail`, so a failing test fails the task even though the output goes through `tee`. Both files are ignored by git. |
+| `go:test-ci` | The same tests, with a coverage profile in `coverage.out` and a JUnit report in `report.xml` from go-junit-report (installed by `go:install-ci`). The output is piped through `go-junit-report -iocopy -set-exit-code`, which copies it to the terminal and exits 1 when a test fails, and the task runs with `pipefail`, so a build error fails it too. Coverage is measured across the product packages (`-coverpkg`, every package except `internal/integration`), so code that the root command's tests reach in `internal/releash` counts. Both files are ignored by git. |
 
 To run one scenario, pass `-run` to `go test` with the tag, e.g. `go test -tags integration -count=1 -run TestClientTokensSeeTheFixtureFlags ./internal/integration/`.

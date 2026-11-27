@@ -18,16 +18,18 @@ import (
 // clientFeatures is the part of a Client API response the smoke test reads.
 type clientFeatures struct {
 	Features []struct {
-		Name    string `json:"name"`
-		Project string `json:"project"`
-		Enabled bool   `json:"enabled"`
+		Name       string                 `json:"name"`
+		Project    string                 `json:"project"`
+		Enabled    bool                   `json:"enabled"`
+		Strategies []integration.Strategy `json:"strategies"`
 	} `json:"features"`
 }
 
 // TestClientTokensSeeTheFixtureFlags checks that the stack is seeded as
-// unleash/fixtures.json says: each client token sees every fixture flag, and
-// each flag is switched on or off as the fixture says for that token's
-// environment. The release scenarios in M3 and M4 rely on this.
+// unleash/fixtures.json says: each client token sees every fixture flag and
+// no other, each flag is switched on or off as the fixture says for that
+// token's environment, and its strategies have the fixture's names,
+// parameters and constraints. The release scenarios in M3 and M4 rely on this.
 func TestClientTokensSeeTheFixtureFlags(t *testing.T) {
 	integration.RequireUnleash(t)
 	fixtures := integration.LoadFixtures(t)
@@ -37,17 +39,19 @@ func TestClientTokensSeeTheFixtureFlags(t *testing.T) {
 		t.Run(env, func(t *testing.T) {
 			got := fetchClientFeatures(t, integration.ClientToken(t, env))
 
-			enabled := make(map[string]bool, len(got.Features))
-			for _, f := range got.Features {
+			byName := make(map[string]int, len(got.Features))
+			for i, f := range got.Features {
 				assert.Equal(t, fixtures.Project, f.Project, "project of flag %q", f.Name)
-				enabled[f.Name] = f.Enabled
+				byName[f.Name] = i
 			}
 			for _, flag := range fixtures.Flags {
-				on, ok := enabled[flag.Name]
+				i, ok := byName[flag.Name]
 				if !assert.True(t, ok, "flag %q is not visible to the %s token", flag.Name, env) {
 					continue
 				}
-				assert.Equal(t, flag.EnabledIn(env), on, "flag %q enabled in %s", flag.Name, env)
+				f := got.Features[i]
+				assert.Equal(t, flag.EnabledIn(env), f.Enabled, "flag %q enabled in %s", flag.Name, env)
+				assert.ElementsMatch(t, normalize(flag.Strategies), normalize(f.Strategies), "strategies of flag %q in %s", flag.Name, env)
 			}
 			assert.Len(t, got.Features, len(fixtures.Flags), "the %s token sees flags that are not fixtures", env)
 		})
@@ -72,6 +76,30 @@ func TestUnresponsiveServerNeverAnswers(t *testing.T) {
 	assert.GreaterOrEqual(t, time.Since(start), 200*time.Millisecond)
 }
 
+// normalize drops the empty lists and maps that the Client API sends and
+// fixtures.json leaves out, so the two compare equal when they mean the same.
+func normalize(strategies []integration.Strategy) []integration.Strategy {
+	out := make([]integration.Strategy, 0, len(strategies))
+	for _, s := range strategies {
+		if len(s.Parameters) == 0 {
+			s.Parameters = nil
+		}
+		constraints := make([]integration.Constraint, 0, len(s.Constraints))
+		for _, c := range s.Constraints {
+			if len(c.Values) == 0 {
+				c.Values = nil
+			}
+			constraints = append(constraints, c)
+		}
+		s.Constraints = nil
+		if len(constraints) > 0 {
+			s.Constraints = constraints
+		}
+		out = append(out, s)
+	}
+	return out
+}
+
 func isTimeout(err error) bool {
 	var te interface{ Timeout() bool }
 	return errors.As(err, &te) && te.Timeout()
@@ -79,7 +107,7 @@ func isTimeout(err error) bool {
 
 func fetchClientFeatures(t *testing.T, token string) clientFeatures {
 	t.Helper()
-	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, integration.URL()+"/api/client/features", nil)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, integration.URL()+"/client/features", nil)
 	require.NoError(t, err)
 	req.Header.Set("Authorization", token)
 

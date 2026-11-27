@@ -49,7 +49,12 @@ tasks:
 
   test-ci:
     desc: Run unit and integration tests, and write a JUnit report and a coverage profile.
-    # Without pipefail the pipeline exits with tee's status, so failing tests would pass the CI step.
+    vars:
+      # Product packages only: internal/integration holds test helpers.
+      COVER_PACKAGES:
+        sh: go list ./... | grep -v /internal/integration | paste -sd, -
+    # go-junit-report copies the test output to stdout (-iocopy) and exits 1 if a test failed (-set-exit-code).
+    # pipefail also fails the task when go test fails without a failing test, e.g. on a build error.
     set: [pipefail]
     cmds:
-      - go test -tags integration -count=1 -coverprofile {{.COVERAGE_RAW}} -v ./... 2>&1 | tee >(go-junit-report > {{.TEST_REPORT}})
+      - go test -tags integration -count=1 -coverpkg={{.COVER_PACKAGES}} -coverprofile {{.COVERAGE_RAW}} -v ./... 2>&1 | go-junit-report -iocopy -set-exit-code -out {{.TEST_REPORT}}
