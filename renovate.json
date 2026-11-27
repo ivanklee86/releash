@@ -129,14 +129,18 @@
       "automerge": false
     },
     {
-      "description": "Only release-check exercises these, and it is not a required check, so native auto-merge would not wait for it",
+      "description": "Only release-check exercises these, and it is not a required check, so native auto-merge would not wait for it. They get their own group, because a group automerges only when every update in it may, so keeping them in ci would stop routine ci updates from automerging",
       "matchPackageNames": [
         "gcr.io/distroless/static-debian13",
         "goreleaser/goreleaser",
         "anchore/syft",
         "tonistiigi/binfmt",
-        "moby/buildkit"
+        "moby/buildkit",
+        "goreleaser/goreleaser-action",
+        "docker/setup-qemu-action",
+        "docker/setup-buildx-action"
       ],
+      "groupName": "release",
       "automerge": false
     }
   ],
