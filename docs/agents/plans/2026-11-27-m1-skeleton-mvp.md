@@ -4,7 +4,7 @@ Started 2026-11-27. Status: in progress. Milestone: [M1](../milestones/M1-skelet
 
 ## Resume here
 
-Updated 2026-11-27. PR 1 (planning docs) is merged as #2. PR 2 (devcontainer) is ready on branch `devcontainer` for the user to commit and `/ship`; it also carries the expanded Renovate section in M2. PR 3 (Go skeleton) can start now in a fresh session, in its own worktree if PR 2 is still open. When resuming, start the first PR in [Steps](#steps) that is not checked off and whose dependencies are merged. Before ending a session, update this section and check off finished steps.
+Updated 2026-11-27. PRs 1–3 are merged (#2, #4, #5). PR 4 is open as #7 on branch `ci`, and is waiting for CI and the user's merge. After PR 4 merges with CI green, check it off and do the close-out step. The user decided that a stray argument together with `--help` or `--version` may exit 0, and the M1 exit criterion now says so. When resuming, start the first PR in [Steps](#steps) that is not checked off and whose dependencies are merged. Before ending a session, update this section and check off finished steps.
 
 ## How to work through this plan
 
@@ -40,6 +40,7 @@ Pinned versions, matching the devcontainer base image `ghcr.io/ivanklee86/devcon
 | Go | 1.27.4 |
 | `github.com/spf13/cobra` | v1.10.2 |
 | `github.com/spf13/viper` | v1.21.0 |
+| `github.com/spf13/pflag` | v1.0.10 (v1.1.0 renders bool flags as `--help[=true\|false]` in help output, and a test guards against it) |
 | `github.com/stretchr/testify` | v1.12.1 |
 | golangci-lint | v2.15.0 |
 | go-junit-report | v2.1.0 |
@@ -66,12 +67,12 @@ Check for newer releases at the start of each PR, and use them if they are avail
 
 ### PR 3: Go skeleton
 
-- [ ] Branch `go-skeleton`.
+- [x] Branch `go-skeleton`. Merged as #5. Panics in commands are recovered and exit 1. Cobra's default `completion` command is disabled because it exits 0 on unknown subcommands. Cobra's hidden `__complete` command can't be disabled and is left in place.
 - Contents: `go.mod` and `go.sum` (`module github.com/ivanklee86/releash`, `go 1.27.4`); `main.go` with `NewRootCommand`, `initializeConfig`, `bindFlags` and the `version` variable; `internal/releash` with `Config`, `Releash`, `New` and `NewWithConfig`; tests for `main` and `internal/releash`; README usage section.
 - Behaviour:
   - `releash` and `releash --help` print help to stdout and exit 0.
   - `releash --version` prints the injected `version` if set. Otherwise it prints the main module version from `runtime/debug.ReadBuildInfo` when that is not empty or `(devel)`, and otherwise `dev`. It exits 0.
-  - An unknown command or option prints an error to stderr, leaves stdout empty, and exits 2. The `true`/`false` stdout contract covers only `releash check` (spec 0001).
+  - An unknown command or option prints an error to stderr, leaves stdout empty, and exits 2. A stray argument together with `--help` or `--version` prints help or the version and exits 0 instead (see the M1 milestone). The `true`/`false` stdout contract covers only `releash check` (spec 0001).
 - Tests, written first as a list in the PR description, then as code: no arguments; `--help`; `--version` with an injected value, with only build info, and with neither (make the build-info lookup a variable or parameter the test can replace); unknown command; unknown option. Each asserts stdout, stderr and the exit code.
 - Checks: `go build ./...`, `go vet ./...`, `go test ./...`, `gofmt -l .` is empty.
 - Milestone criteria: module layout, cobra and viper, help, version, exit 2, `go build` and `go test`.
@@ -79,7 +80,7 @@ Check for newer releases at the start of each PR, and use them if they are avail
 
 ### PR 4: Task, lint and CI
 
-- [ ] Branch `ci`.
+- [ ] Branch `ci`, rebased onto `main`. Open as #7. CI runners are pinned to `ubuntu-26.04`, and only the lint job caches `~/go/bin`, keyed on the Go version and `tasks/go.yaml`. `renovate.json` gains regex managers for the `go install` pins in `tasks/go.yaml` and Task's version in the setup-task action. Third-party GitHub Actions are pinned to full commit SHAs with a `# vX.Y.Z` comment (argonap uses major tags), so a moved or compromised tag cannot change what CI runs. `install-ci` installs only golangci-lint, because go-junit-report is needed only by M2's test reports.
 - Contents: `Taskfile.yaml` and `tasks/go.yaml` (`install`, `install-ci`, `fmt`, `lint`, `build`, `test`); `.golangci.yml` (with `gofmt` and `goimports` formatters); `.github/actions/setup-task/action.yml`; `.github/workflows/ci.yaml` with `lint` and `test` jobs; `.gitignore` additions for `bin/`, `dist/`, `.task/` and coverage files; `docs/agents/internals.md` covering the layout, the orchestrator pattern, tasks and CI.
 - Checks: `task` passes locally; CI passes on the PR.
 - Milestone criteria: Task, golangci-lint, CI, `internals.md`.

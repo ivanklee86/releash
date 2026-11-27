@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - 'main'
+  pull_request:
+
+# Cancel superseded PR runs. Runs on main always finish.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Least privilege by default; jobs that need more ask for it themselves.
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-26.04
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    - name: Install Go
+      id: setup-go
+      uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+      with:
+        go-version-file: go.mod
+    - name: Check formatting
+      run: |
+        gofmt -d .
+        test -z "$(gofmt -l .)"
+    - name: Install Task
+      uses: ./.github/actions/setup-task
+    - name: Cache Go tool binaries
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/go/bin
+        # The binaries depend on the tool versions in tasks/go.yaml and on the Go toolchain that
+        # built them. os/arch keep them from crossing runners.
+        key: go-tools-${{ runner.os }}-${{ runner.arch }}-go${{ steps.setup-go.outputs.go-version }}-${{ hashFiles('tasks/go.yaml') }}
+    - name: Install CI tools
+      run: task go:install-ci
+    - name: Lint code
+      run: task go:lint
+    - name: Compile code
+      run: task go:build
+
+  test:
+    runs-on: ubuntu-26.04
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    - name: Install Go
+      uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+      with:
+        go-version-file: go.mod
+    - name: Install Task
+      uses: ./.github/actions/setup-task
+    - name: Download dependencies
+      # Tests need no CI tools, so this job skips go:install-ci and the tool cache.
+      run: task go:install
+    - name: Run tests
+      run: task go:test
