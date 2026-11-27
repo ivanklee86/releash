@@ -106,10 +106,10 @@
     },
     {
       "name": "ip-allowlist",
-      "description": "On for loopback and the private ranges Docker networks use, so it covers the runner and the compose network.",
+      "description": "On for loopback, the private ranges Docker networks use, CGNAT (Tailscale and some VPNs) and IPv6 unique local addresses, so it covers the runner and the compose network.",
       "enabled": {"development": true, "production": true},
       "strategies": [
-        {"name": "remoteAddress", "parameters": {"IPs": "127.0.0.1, ::1, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16"}}
+        {"name": "remoteAddress", "parameters": {"IPs": "127.0.0.1, ::1, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10, fc00::/7"}}
       ]
     }
   ]

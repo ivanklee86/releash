@@ -1,7 +1,8 @@
 """Seed the local Unleash with the fixture flags in fixtures.json.
 
 The seed reconciles: it creates what is missing and replaces what differs from the fixtures, and it leaves
-anything already matching untouched, so it can run any number of times. It uses only the standard library and
+anything already matching untouched, so it can run any number of times. It never deletes or archives flags that are
+no longer in the fixtures. It uses only the standard library and
 the Admin API of the Unleash version pinned in docker-compose.yaml.
 
 Environment: UNLEASH_SERVER_URL, the server root without /api (default http://localhost:4242), UNLEASH_ADMIN_TOKEN
@@ -49,10 +50,17 @@ def api(method, path, body=None, missing_ok=False):
         raise APIError(f"{method} {path}: HTTP {e.code}: {body}", status=e.code, body=body) from None
     except urllib.error.URLError as e:
         raise APIError(f"{method} {path}: {e.reason}") from None
-    return json.loads(raw) if raw else None
+    except OSError as e:
+        # A timeout or reset while reading the body, after urlopen has returned.
+        raise APIError(f"{method} {path}: {e}") from None
+    try:
+        return json.loads(raw) if raw else None
+    except ValueError as e:
+        raise APIError(f"{method} {path}: response is not JSON: {e}") from None
 
 
 def quote(s):
+    """Escapes s for use as one path segment."""
     return urllib.parse.quote(s, safe="")
 
 
@@ -95,6 +103,7 @@ def is_archived_name_conflict(e):
 
 
 def seed_context_field(field):
+    """Creates the custom context field, or updates its description and legal values to match. Raises APIError."""
     name = field["name"]
     body = {
         "name": name,
@@ -118,6 +127,8 @@ def seed_context_field(field):
 
 
 def seed_flag(project, flag):
+    """Makes the flag in project match the fixture: creates or revives it, replaces strategies that differ, and turns
+    each listed environment on or off. Raises APIError, also when a listed environment does not exist."""
     name = flag["name"]
     base = f"/api/admin/projects/{quote(project)}/features/{quote(name)}"
     changes = []
@@ -167,6 +178,7 @@ def seed_flag(project, flag):
 
 
 def main():
+    """Seeds every context field and flag in FIXTURES and returns the exit code: 0, or 1 on the first API error."""
     fixtures = json.loads(FIXTURES.read_text())
     project = fixtures.get("project", "default")
     try:

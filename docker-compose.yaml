@@ -12,7 +12,8 @@ services:
     volumes:
       - db-data:/var/lib/postgresql
     healthcheck:
-      test: ["CMD", "pg_isready", "--username=unleash", "--dbname=unleash"]
+      # Over TCP: while the image initialises a new volume, a temporary server answers on the Unix socket only.
+      test: ["CMD", "pg_isready", "--host=127.0.0.1", "--username=unleash", "--dbname=unleash"]
       interval: 2s
       timeout: 5s
       retries: 30
@@ -20,6 +21,7 @@ services:
   unleash:
     # Upgrade together with unleash/seed.py, which uses the Admin API of this version.
     image: unleashorg/unleash-server:8.3.1@sha256:025cd8b003a70cceb88427ca393c377ca6503a210d95fdee54d21610d51f7ed0
+    restart: on-failure
     ports:
       - "4242:4242"
     environment:
@@ -40,9 +42,10 @@ services:
       retries: 60
       start_period: 10s
 
-  # Creates the fixture flags in unleash/fixtures.json. It is idempotent and runs on every `up`.
+  # Creates the fixture flags in unleash/fixtures.json. It is idempotent; `task services` runs it with
+  # `docker compose run`, so its exit code is the task's.
   seed:
-    image: &python python:3.15.2-alpine@sha256:0f9552bb28711333da16915ec146f5e6bb44a7fdac9ced15dc17c2e0206346dd
+    image: python:3.15.2-alpine@sha256:0f9552bb28711333da16915ec146f5e6bb44a7fdac9ced15dc17c2e0206346dd
     command: ["python", "-I", "/unleash/seed.py"]
     environment:
       UNLEASH_SERVER_URL: http://unleash:4242
@@ -52,16 +55,6 @@ services:
     depends_on:
       unleash:
         condition: service_healthy
-
-  # `docker compose up --wait` fails on a service that exits, even successfully, so it waits on this
-  # long-running service instead. It starts only after the seed has exited 0.
-  ready:
-    image: *python
-    command: ["sleep", "infinity"]
-    init: true
-    depends_on:
-      seed:
-        condition: service_completed_successfully
 
 volumes:
   db-data:

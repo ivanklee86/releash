@@ -61,7 +61,7 @@ Pinned versions, checked 2026-11-27. Check for newer releases at the start of ea
 ### PR 2: local Unleash stack
 
 - [ ] Branch `m2/compose`.
-- Contents: `docker-compose.yaml` (Postgres, Unleash on `localhost:4242`, a one-shot `seed` service, and a `ready` service that `depends_on` the seed with `condition: service_completed_successfully`); `unleash/seed.py` and `unleash/fixtures.json`; `tasks/unleash.yaml` with `services`, `services:down` and `releash`; the root Taskfile includes it; `.env.example`; `docs/agents/internals.md` sections for the stack and the fixture flags.
+- Contents: `docker-compose.yaml` (Postgres, Unleash on `localhost:4242`, and a one-shot `seed` service that `task services` runs with `docker compose run --rm seed` once Unleash is healthy; its review replaced a `ready` service, because `up --wait` on a running stack did not wait for the seed again); `unleash/seed.py` and `unleash/fixtures.json`; `tasks/unleash.yaml` with `services`, `services:down` and `releash`; the root Taskfile includes it; `.env.example`; `docs/agents/internals.md` sections for the stack and the fixture flags.
 - Fixture flags: everything the milestone lists. Check whether the pinned open-source image supports a second project. If it doesn't, drop that fixture and add the note to spec 0001 that the milestone asks for.
 - Checks: `task services` exits 0 from a clean state and again on a running stack; `task services:down` removes the volumes; re-running the seed is a no-op; the Client API returns the expected flags for each client token (checked by hand with `curl`).
 - Milestone criteria: Local Unleash; `task services`, `task services:down`, `task releash`, `.env.example`.
