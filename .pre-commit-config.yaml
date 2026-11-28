@@ -57,3 +57,15 @@ repos:
         language: system
         files: ^\.claude/hooks/
         pass_filenames: false
+
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.12
+    hooks:
+      - id: actionlint
+
+  - repo: https://github.com/zizmorcore/zizmor-pre-commit
+    rev: v1.33.1
+    hooks:
+      - id: zizmor
+        # Offline audits only, so the hook needs no GitHub token and gives the same result everywhere.
+        args: [--no-progress, --offline]

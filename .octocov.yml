@@ -1,8 +1,10 @@
 coverage:
   paths:
     - coverage.out
-  # No gate yet: there is almost no product code before M3 and M4. Consider one once the baseline
-  # settles.
+  # The integration job fails when coverage drops below 95% (97.0% when this was set) or falls by
+  # more than one point against the latest report from main. Without a report from main to compare
+  # with, only the floor applies.
+  acceptable: current >= 95% && diff >= -1%
 report:
   datastores:
     - artifact://${GITHUB_REPOSITORY}
