@@ -1,0 +1,5 @@
+# actionlint 1.7.12 does not know GitHub's ubuntu-26.04 hosted runner yet and reports it as an
+# unknown label. Remove this once a release of actionlint lists it.
+self-hosted-runner:
+  labels:
+    - ubuntu-26.04

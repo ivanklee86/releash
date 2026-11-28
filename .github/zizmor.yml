@@ -1,0 +1,5 @@
+rules:
+  # zizmor suggests writing local actions as `$/...` instead of `./.github/actions/...`.
+  # Off until GitHub documents that syntax; the local actions are pinned by being in this repository.
+  self-repository:
+    disable: true

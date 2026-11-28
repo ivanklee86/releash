@@ -106,8 +106,8 @@ The README and specs use `deploy-payments` only as an example; it is not seeded.
 |---|---|
 | `lint` | Formatting, `golangci-lint`, the build, and a tidy `go.mod`. |
 | `test` | Unit tests. |
-| `pre-commit` | The prek hooks, except those `lint` already covers. |
-| `integration` | Unit and integration tests against the compose stack, with a JUnit check run and an octocov coverage comment. It is the only job with write permissions. |
+| `pre-commit` | The prek hooks, except those `lint` already covers. They include actionlint and zizmor (offline audits) on the workflows; `.github/actionlint.yaml` and `.github/zizmor.yml` hold their settings. |
+| `integration` | Unit and integration tests against the compose stack, with a JUnit check run and an octocov coverage comment. It fails when coverage drops below 95% or falls by more than one point against `main` (`.octocov.yml`). It is the only job with write permissions. |
 | `release-check` | A snapshot of the full release build, without signing or pushing, smoke-tested with `--version`. |
 | `release-notes` | That `.github/release.yml` matches the categories in spec 0002. |
 

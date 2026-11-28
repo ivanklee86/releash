@@ -1,6 +1,6 @@
 # Guardrails that run without being asked
 
-- Status: active
+- Status: done
 - Issue: [#37](https://github.com/ivanklee86/releash/issues/37), part 2
 - Branch: `guardrails` (one branch per pull request below)
 
@@ -64,3 +64,8 @@ Fuzz tests for the parsers in `internal/variant` and `internal/releash`, and a s
 - `task` and `prek run --all-files` pass with every new check enabled, with no blanket exclusions.
 - The `pre-commit` job runs actionlint and zizmor, and fails on a deliberately broken workflow (checked once on a throwaway commit).
 - The `integration` job fails when coverage drops below the floor (checked once locally with `octocov` against a trimmed profile, or by reading the job's output).
+
+## Outcome
+
+- Pull request 1 merged as #42.
+- Pull request 2: actionlint 1.7.12 and zizmor 1.33.1 run as prek hooks and pass on every workflow. Both fail on a throwaway workflow with an unpinned action and a template injection. The coverage floor was checked with octocov 0.83.5, which only enforces `acceptable` when `CI` is set: with `CI=true`, a 99% floor fails on a 96.1% profile with "the condition in the `coverage.acceptable:` section is not met", and the 95% floor passes. With no earlier report, `diff` is measured against 0%, so only the floor applies.
