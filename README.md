@@ -4,7 +4,6 @@
 [![Coverage](https://raw.githubusercontent.com/ivanklee86/octocov-central/main/badges/ivanklee86/releash/coverage.svg)](https://octocov.dev/ivanklee86/releash)
 [![Test Execution Time](https://raw.githubusercontent.com/ivanklee86/octocov-central/main/badges/ivanklee86/releash/time.svg)](https://octocov.dev/ivanklee86/releash)
 [![Go Reference](https://pkg.go.dev/badge/github.com/ivanklee86/releash.svg)](https://pkg.go.dev/github.com/ivanklee86/releash)
-[![Go Report Card](https://goreportcard.com/badge/github.com/ivanklee86/releash)](https://goreportcard.com/report/github.com/ivanklee86/releash)
 [![Release](https://img.shields.io/github/v/release/ivanklee86/releash)](https://github.com/ivanklee86/releash/releases/latest)
 [![License: MPL 2.0](https://img.shields.io/badge/license-MPL%202.0-brightgreen.svg)](LICENSE)
 
