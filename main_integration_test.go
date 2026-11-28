@@ -7,8 +7,7 @@ package main
 // stack (task services), and the helpers are in internal/integration. The
 // release scenarios themselves are in internal/releash. The command contract
 // (exit codes 2 to 5, defaults, environment fallback, the raw-argument scan)
-// needs no stack and is covered by the unit tests in check_test.go and
-// variant_test.go.
+// needs no stack and is covered by the unit tests in main_test.go.
 
 import (
 	"bytes"
