@@ -10,7 +10,7 @@
 - Milestones should be defined in `docs/agents/milestones`, following [`TEMPLATE.md`](docs/agents/milestones/TEMPLATE.md) and named `M<N>-<topic>.md` (e.g. `M1-multi-source-applications.md`). A milestone is `done` only when every exit criterion holds.
 - Decisions should be recorded in [MADR 4.0.0](https://adr.github.io/madr/) format in `docs/adrs`.
 - Plans should be stored in `docs/agents/plans`, named `YYYY-MM-DD-<topic>.md` with the date the plan was started (e.g. `2026-11-26-multi-source-applications.md`).
-- Keep `docs/agents/internals.md` up to date as repository changes.
+- Escape placeholders such as `<topic>` in Markdown prose (`\<topic\>`) or put them in backticks, because GitHub drops them as unknown HTML tags.
 - Keep `docs/architecture.md` up to date.  This document should be focused on technical details and use mermaid.js diagrams where appropriate.
 - Let's use full-length lines when writing docs.  Documentation should be human-focused and written with technical engineers in mind.
 

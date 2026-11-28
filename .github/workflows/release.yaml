@@ -27,6 +27,7 @@ jobs:
       id-token: write  # the OIDC token cosign exchanges for a keyless signing certificate
     env:
       GORELEASER_VERSION: v2.20.3 # github-releases/goreleaser/goreleaser
+      # The README and spec 0002 say verification needs cosign v3 or later; revisit that on a new major.
       COSIGN_VERSION: v3.1.4 # github-releases/sigstore/cosign
       IMAGE: ghcr.io/ivanklee86/releash
       # The keyless signing identity of this workflow at this tag, as spec 0002 documents it for users.
@@ -169,7 +170,8 @@ jobs:
       # Runs spec 0002's verification against what was just published. goreleaser has already made
       # the release and the image tags public by now, and, unless a late goreleaser step such as the
       # cask failed, the cask too. A failure here does not hold them back: it fails the run, so an
-      # unverifiable release is noticed at once.
+      # unverifiable release is noticed at once. Re-running the job is not a recovery, because goreleaser
+      # would run again against a release whose assets exist: fix the cause and tag the next version.
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         DIGEST: ${{ steps.attest.outputs.digest }}

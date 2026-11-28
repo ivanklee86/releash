@@ -10,7 +10,9 @@ import (
 
 // metricsInterval is how often the SDK sends buffered usage counts. A check
 // evaluates one flag once, so it bounds how long the check waits for the send
-// to start. Ticks with nothing counted send nothing.
+// to start. Ticks with nothing counted send nothing. The SDK announces a
+// sub-second interval as 0 seconds in the register request, which Unleash
+// accepts.
 const metricsInterval = 100 * time.Millisecond
 
 // awaitMetrics waits until Unleash has accepted the usage metrics of an

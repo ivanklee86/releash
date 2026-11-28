@@ -2,7 +2,8 @@
 
 The seed reconciles: it creates what is missing and replaces what differs from the fixtures, and it leaves
 anything already matching untouched, so it can run any number of times. It never deletes or archives flags that are
-no longer in the fixtures. It uses only the standard library and
+no longer in the fixtures, so after removing or renaming a fixture, start from a clean stack with `task services:down`
+and `task services`. It uses only the standard library and
 the Admin API of the Unleash version pinned in docker-compose.yaml.
 
 Environment: UNLEASH_SERVER_URL, the server root without /api (default http://localhost:4242), UNLEASH_ADMIN_TOKEN
