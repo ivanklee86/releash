@@ -15,7 +15,7 @@
     "enabled": true
   },
   "devcontainer": {
-    "description": "Features are maintained in the shared gantry base (ivanklee86/devcontainers), not here; the base image digest in .devcontainer/Dockerfile is still updated by the dockerfile manager",
+    "description": "Features are maintained in the shared gantry base (ivanklee86/devcontainers), not here; the base image digest in .devcontainer/Dockerfile is still updated by the dockerfile manager. Renovate therefore never updates .devcontainer/devcontainer-lock.json: refresh it with devcontainer upgrade --workspace-folder . after the gantry base changes a feature",
     "enabled": false
   },
   "packageRules": [

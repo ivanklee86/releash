@@ -217,6 +217,8 @@ On a non-zero exit, `check` still prints `false`. `variant` prints nothing on ex
 
 Gate a deploy on a flag. An Unleash outage skips the deploy, and a misconfigured check fails the job.
 
+<!-- Renovate does not read the README: keep the actions/checkout pin below in step with the pins in .github/workflows/ci.yaml and release.yaml. -->
+
 ```yaml
 jobs:
   deploy:

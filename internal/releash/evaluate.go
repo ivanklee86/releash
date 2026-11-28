@@ -346,7 +346,9 @@ func (memoryStorage) Persist(*api.FeatureResponse) error { return nil }
 
 // sdkListener turns the SDK's callbacks into channels that evaluate can wait
 // on. The SDK runs every callback on its one sync goroutine, so none of them
-// may block.
+// may block. evaluate does not use Client.Ready or Client.WaitForReady: the
+// SDK's goroutine reads the same channel, and WaitForReady cannot be
+// cancelled.
 type sdkListener struct {
 	readyOnce sync.Once
 	ready     chan struct{}

@@ -22,6 +22,7 @@ tasks:
       - docker compose down --volumes --remove-orphans
 
   releash:
+    # Task reports a non-zero exit from releash as its own exit code 201; `task -x releash -- <args>` passes it through.
     desc: Build releash and run it against the local stack with the production client token, e.g. task releash -- --help.
     deps:
       # Flattened into the root Taskfile, so the go include is referenced without a leading colon.
