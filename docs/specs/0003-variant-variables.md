@@ -79,7 +79,7 @@ vars=$(releash variant checkout-redesign --user-id "$GITHUB_REPOSITORY" --format
 
 ## Keep the variant sticky
 
-Unleash assigns variants by stickiness, which by default is `userId`, then `sessionId`, then random. A pipeline usually sets neither, so without help each run, and each retry of a run, could get a different variant. releash does not guess which CI system it runs on, so pass something that identifies the unit you are experimenting on, usually the repository or pipeline.
+Unleash assigns variants by stickiness. Default stickiness uses `userId`, then `sessionId`; the Go SDK then uses `remoteAddress`, which releash sets to the runner's address unless `--remote-address` is given, and only then picks at random. A pipeline usually sets neither ID, so without help the variant can change from run to run, and from retry to retry, on ephemeral CI runners, and it follows the host rather than the repository on fixed ones. releash does not guess which CI system it runs on, so pass something that identifies the unit you are experimenting on, usually the repository or pipeline.
 
 The simplest way is to pass the repository name as `--user-id`. Default stickiness uses `userId` first, so this needs no change in Unleash, and each repository always gets the same variant:
 
@@ -89,7 +89,7 @@ releash variant checkout-redesign --user-id "$GITHUB_REPOSITORY" >> "$GITHUB_ENV
 
 Pass the same `--user-id` to `check`, so that a gradual rollout on default stickiness puts the gate and the variant in the same bucket.
 
-If `userId` already means something else in your Unleash setup, or you want stickiness on something other than the repository, pass a custom property, to `check` too, and set the variant's stickiness to that property in Unleash. The property must exist as a context field in Unleash with stickiness enabled:
+If `userId` already means something else in your Unleash setup, or you want stickiness on something other than the repository, pass a custom property, to `check` too, and set the variant's stickiness to that property in Unleash. Create the property as a context field with stickiness enabled, so that Unleash offers it as a stickiness option; evaluation itself does not need the context field. Custom stickiness does not fall back to `userId`, so a run that omits the property gets a random variant:
 
 ```sh
 releash variant checkout-redesign --properties repo="$GITHUB_REPOSITORY" >> "$GITHUB_ENV"
@@ -268,7 +268,7 @@ A fallback exits 0 even when it happens after `check` answered `true`, e.g. beca
 - The SDK returns the same `disabled` variant for a flag that is unknown and for one that is disabled. releash therefore looks the flag up in the flags it fetched (`ListFeatures`): a flag that is not there is spec 0001's "flag not found" fallback and exits 0; a flag that is there and not enabled for the context exits 6.
 - releash sets no `VariantFallbackFunc` or fallback variant. The SDK uses either for unknown and disabled flags, and also for an enabled flag that has no variants, where a releash fallback would hide that the flag is enabled. Without one, the SDK returns its own `disabled` variant with `FeatureEnabled` set as evaluated, which is what `ENABLED` reports. The M6 spike confirms the no-variants case against Unleash 8.3.1.
 - A flag the SDK fails to evaluate, e.g. one whose strategy names a segment missing from the response, is reported through the SDK's error channel as for `check`, and falls back to the disabled variant with exit 0. Such a flag is also in the fetched flags and not enabled, so the evaluation error takes precedence: releash decides on exit 6 only after it has checked for one.
-- The default-stickiness warning reads the fetched flag's variant definitions: feature variants and the variants of each strategy carry a `stickiness`, and a value of `default` or an empty one means default stickiness.
+- The default-stickiness warning reads the stickiness the SDK hashes with, from the fetched flag: for feature variants, the variants' `stickiness`; for strategy variants, the strategy's `stickiness` parameter, which the SDK uses in place of the variants' own, or the variants' `stickiness` when the strategy has none. A value of `default` or an empty one means default stickiness.
 - Usage metrics: the SDK counts a `GetVariant` call as one evaluation of the flag and one use of the variant it returned, so Unleash's metrics show which variants pipelines were given. releash waits for the send as `check` does, and only after an evaluated answer, which here means exit 0 with an evaluated variant: a fallback and exit 6 both skip the wait.
 
 ## Test plan

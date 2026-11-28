@@ -191,7 +191,7 @@ The simplest way is to pass the repository as `--user-id`. It needs no change in
 releash variant checkout-redesign --user-id "$GITHUB_REPOSITORY" >> "$GITHUB_ENV"
 ```
 
-If `userId` already means something else in your Unleash setup, pass a custom property instead, to `check` too, and set the variant's stickiness to that property in Unleash. Create the property as a context field with stickiness enabled, so that Unleash offers it as a stickiness option:
+If `userId` already means something else in your Unleash setup, pass a custom property instead, to `check` too, and set the variant's stickiness to that property in Unleash. Create the property as a context field with stickiness enabled, so that Unleash offers it as a stickiness option. Custom stickiness does not fall back to `userId`, so a run that omits the property gets a random variant:
 
 ```sh
 releash variant checkout-redesign --properties repo="$GITHUB_REPOSITORY" >> "$GITHUB_ENV"
