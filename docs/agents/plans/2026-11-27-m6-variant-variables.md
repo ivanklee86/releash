@@ -63,10 +63,10 @@ Spike findings, 2026-11-27, against Unleash 8.3.1 at `localhost:4242` with `unle
 
 Questions from the spike, settled on 2026-11-28: the user asked for the doc updates after PR 3, and spec 0003 and the milestone now say what the first four points propose.
 
-- The default-stickiness `--loud` warning: spec 0003 says it reads the stickiness of feature variants and strategy variants, but the SDK decides strategy-variant stickiness by the strategy's `stickiness` parameter. Proposed: read `Strategies[].Parameters["stickiness"]` for strategy variants and `Variants[0].Stickiness` for feature variants, and amend spec 0003's "Unleash integration" to match.
-- Spec 0003's "Keep the variant sticky" and its stickiness bullet should add the `remoteAddress` step, and say that without `--user-id` runs stick to the runner's address rather than being random.
-- Spec 0003 says a custom stickiness property must exist as a context field with stickiness enabled. Evaluation does not need it; only the Unleash UI does. Proposed: keep the advice, worded as what the UI needs.
-- `seed.py` and `integration.CreateFlag` write feature variants through `variants-batch` (finding 1); the milestone's risk section names the per-environment endpoint.
+- The default-stickiness `--loud` warning reads `Strategies[].Parameters["stickiness"]` for strategy variants and `Variants[0].Stickiness` for feature variants, as the SDK does; spec 0003's "Unleash integration" says so.
+- Spec 0003's "Keep the variant sticky" has the `remoteAddress` step, which applies only to choosing the variant: a gradual rollout on default stickiness skips it and decides on or off at random without `userId` or `sessionId`.
+- The custom-stickiness context field is advised for the Unleash UI only, since evaluation does not need it. A run that omits the property gets a random feature variant, and a strategy with that stickiness does not match.
+- `seed.py` and `integration.CreateVariantFlag` write feature variants through `variants-batch` (finding 1), and the milestone's risk section names it.
 - Found while testing PR 2, for information: SDK v6.5.1 panics (`interface conversion: interface {} is nil, not string`) when it evaluates a `flexibleRollout` strategy that has no `stickiness` parameter, for `check` and `variant` alike. The panic is on releash's goroutine, so `run` recovers it as exit 1 with the fallback. Unleash always stores the parameter, so only a hand-written response can trigger it; the unit tests use a `default` strategy with a `groupId` for strategy variants without a stickiness parameter.
 
 ## Steps
