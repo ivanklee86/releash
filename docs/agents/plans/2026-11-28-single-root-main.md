@@ -1,10 +1,10 @@
 # Plan: one `main.go` in the module root
 
-Started 2026-11-28. Status: implemented, not yet committed or merged.
+Started 2026-11-28. Status: implemented in PR #31.
 
 ## Resume here
 
-Updated 2026-11-28. Steps 1 to 6 are done in the working tree: the test lists and the root package coverage (91.0%) match the baseline. What is left is the pull request, which the user ships.
+Updated 2026-11-28. Steps 1 to 6 are done in PR #31: the test lists and the root package coverage (91.0%) match the baseline. Once it merges, this plan is done.
 
 ## Goal
 

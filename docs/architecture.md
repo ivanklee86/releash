@@ -86,7 +86,7 @@ releash fails safe. A problem with Unleash never turns a gate on and never fails
 ```mermaid
 flowchart TD
     start(["Run"]) --> valid{"Options valid?"}
-    valid -- "no" --> misuse["Fallback answer<br/>exit 1 to 5"]
+    valid -- "no" --> misuse["Fallback answer<br/>exit 2 to 5"]
     valid -- "yes" --> answered{"Unleash answered<br/>and knows the flag?"}
     answered -- "no" --> fallback["Fallback answer<br/>exit 0"]
     answered -- "yes" --> command{"Command"}
@@ -96,7 +96,7 @@ flowchart TD
     enabled -- "no" --> refused["Disabled variant<br/>exit 6"]
 ```
 
-The fallback answer is `false` for `check` and the disabled variant for `variant`. `--loud` explains a fallback on stderr.
+The fallback answer is `false` for `check` and the disabled variant for `variant`. `--loud` explains a fallback on stderr. An internal error in releash, such as a recovered panic, also prints the fallback answer and exits 1.
 
 ## Release pipeline
 

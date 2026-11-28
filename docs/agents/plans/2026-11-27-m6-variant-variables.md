@@ -4,7 +4,7 @@ Started 2026-11-27. Status: in progress. Milestone: [M6](../milestones/M6-varian
 
 ## Resume here
 
-Updated 2026-11-28. PRs 1 to 3 are merged as #27, #28 and #29, and the stickiness amendments to spec 0003 and the M6 milestone as #30. Still in the working tree, not committed: the README rewrite (it no longer has a status paragraph or mentions `v0.2.0`), `docs/architecture.md`, and the merge of `variant.go` and the root test files into `main.go` and `main_test.go` ([plan](2026-11-28-single-root-main.md)). They should merge before the tag, so the archives ship the new README. Next is `v0.2.0`, on the user's go, then the close-out. When resuming, start the first step in [Steps](#steps) that is not checked off and whose dependencies are done. Before ending a session, update this section and check off finished steps.
+Updated 2026-11-28. PRs 1 to 3 are merged as #27, #28 and #29, and the stickiness amendments to spec 0003 and the M6 milestone as #30. PR #31 holds the README rewrite (it no longer has a status paragraph, and says only that `variant` needs 0.2.0 or later), `docs/architecture.md`, and the merge of `variant.go` and the root test files into `main.go` and `main_test.go` ([plan](2026-11-28-single-root-main.md)). They should merge before the tag, so the archives ship the new README. Next is `v0.2.0`, on the user's go, then the close-out. When resuming, start the first step in [Steps](#steps) that is not checked off and whose dependencies are done. Before ending a session, update this section and check off finished steps.
 
 ## How to work through this plan
 

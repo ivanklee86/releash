@@ -39,7 +39,7 @@ go install github.com/ivanklee86/releash@v0.1.2
 docker run --rm -e UNLEASH_URL -e UNLEASH_API_TOKEN ghcr.io/ivanklee86/releash:0.1.2 check deploy-payments
 ```
 
-The image supports `linux/amd64` and `linux/arm64`. Tags are exact versions and `latest`.
+The image supports `linux/amd64` and `linux/arm64`. Tags are exact versions, and `latest` for releases that are not prereleases.
 
 ## Quick start
 
@@ -79,6 +79,8 @@ Each check reports its usage to Unleash before it exits. releash keeps fetched f
 ```text
 releash variant <flag> [options]
 ```
+
+`variant` needs releash 0.2.0 or later.
 
 `variant` prints the flag's variant and payload as environment variables. Suppose the flag `checkout-redesign` has a variant `treatment` with this JSON payload:
 
@@ -131,13 +133,13 @@ RELEASH_CHECKOUT_REDESIGN_VARIANT=disabled
 | The flag is enabled but has no variants | `ENABLED=true`, `VARIANT=disabled` | 0 |
 | Unleash cannot answer, or does not know the flag | Disabled variant | 0 |
 | The payload cannot be printed (invalid JSON, two keys with the same variable name, a newline in a `dotenv` value) | Disabled variant | 0 |
-| The flag is disabled | Disabled variant, and an error on stderr | 6 |
+| The flag is disabled for the context | Disabled variant, and an error on stderr | 6 |
 
 Exit 6 means the pipeline loaded a variant without gating on `check` first. Run `check`, and call `variant` only when it prints `true`. Pass both commands the same context options, otherwise they can disagree.
 
 ### Keep the variant sticky
 
-Unleash picks a variant by hashing a context field, by default `userId` or `sessionId`. Pipelines usually set neither, so the variant can change between runs, and a gradual rollout turns on and off at random.
+Unleash picks a variant by hashing a context field. With default stickiness that is `userId`, then `sessionId`, then `remoteAddress`. Pipelines usually set neither ID, so the variant follows `remoteAddress`, which releash sets to the local address of its connection to Unleash. That address can change between runs, and behind a shared proxy or NAT every repository gets the same variant. A gradual rollout on default stickiness skips `remoteAddress`, so without an ID it turns on and off at random.
 
 Pass something stable that identifies what you are experimenting on, usually the repository, to both commands:
 
@@ -152,7 +154,7 @@ If `userId` already means something else in your Unleash setup, use a custom pro
 releash variant checkout-redesign --properties repo="$GITHUB_REPOSITORY"
 ```
 
-For this to work, create `repo` as a context field with stickiness enabled in Unleash, and select it as the stickiness of the variants and the rollout strategy. A run that omits the property does not match that strategy.
+For this to work, create `repo` as a context field with stickiness enabled in Unleash, and select it as the stickiness of the variants and the rollout strategy. Custom stickiness does not fall back to `userId`. A run that omits the property gets a random variant, and does not match that strategy, so unless another strategy matches, `check` prints `false` and `variant` exits 6.
 
 | CI system | Repository or pipeline name |
 |---|---|
@@ -198,7 +200,7 @@ These options set the [Unleash context](https://docs.getunleash.io/reference/unl
 | 3 | Missing or empty Unleash URL or API token |
 | 4 | Invalid context value, property name or Unleash URL |
 | 5 | A context option or property given twice |
-| 6 | `variant` only: the flag is disabled |
+| 6 | `variant` only: the flag is disabled for the context |
 
 On a non-zero exit, `check` still prints `false` and `variant` prints the disabled variant when it can tell which format and prefix you asked for. When there are several mistakes, the lowest code wins.
 
@@ -302,7 +304,7 @@ tar -xzf "releash_${VERSION}_linux_amd64.tar.gz" releash
 
 On macOS, use `shasum -a 256 --check --ignore-missing checksums.txt`. The macOS binaries are not notarized. If you downloaded the archive with a browser, run `xattr -d com.apple.quarantine releash` before the first use.
 
-In GitHub Actions, install cosign with [`sigstore/cosign-installer`](https://github.com/sigstore/cosign-installer) and add these commands to the install step.
+In GitHub Actions, install cosign with [`sigstore/cosign-installer`](https://github.com/sigstore/cosign-installer) and replace the example's install step with these commands, so the archive is saved to disk and checked before it is extracted.
 
 ### Container image
 
