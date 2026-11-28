@@ -1,10 +1,10 @@
 # Plan: M6 variant variables
 
-Started 2026-11-27. Status: in progress. Milestone: [M6](../milestones/M6-variant-variables.md).
+Started 2026-11-27. Status: done. Milestone: [M6](../milestones/M6-variant-variables.md).
 
 ## Resume here
 
-Updated 2026-11-28. PRs 1 to 3 are merged as #27, #28 and #29, and the stickiness amendments to spec 0003 and the M6 milestone as #30. PR #31 holds the README rewrite (it no longer has a status paragraph, and says only that `variant` needs 0.2.0 or later), `docs/architecture.md`, and the merge of `variant.go` and the root test files into `main.go` and `main_test.go` ([plan](2026-11-28-single-root-main.md)). They should merge before the tag, so the archives ship the new README. Next is `v0.2.0`, on the user's go, then the close-out. When resuming, start the first step in [Steps](#steps) that is not checked off and whose dependencies are done. Before ending a session, update this section and check off finished steps.
+Updated 2026-11-28. M6 is done. PRs 1 to 3 merged as #27, #28 and #29, the stickiness amendments to spec 0003 and the M6 milestone as #30, and the README rewrite, `docs/architecture.md` and the merge of the root Go files into `main.go` and `main_test.go` as #31 ([plan](2026-11-28-single-root-main.md)). `v0.2.0`, tagged on `aaefe7a` (the merge of #33), ships `releash variant` and verifies with spec 0002's commands (see [Release: v0.2.0](#release-v020)), and spec 0003 is `implemented`. Nothing remains in this plan.
 
 ## How to work through this plan
 
@@ -94,9 +94,9 @@ Questions from the spike, settled on 2026-11-28: the user asked for the doc upda
 
 ### Release: v0.2.0
 
-- [ ] After PRs 1 to 3 are merged and main's CI is green, with the user's go, Claude tags `v0.2.0`. The workflow passes every step; spec 0002's commands verify it; the release notes list the M6 PRs under Features.
+- [x] After PRs 1 to 3 are merged and main's CI is green, with the user's go, Claude tags `v0.2.0`. The workflow passes every step; spec 0002's commands verify it; the release notes list the M6 PRs under Features. Done 2026-11-28: the tag is on `aaefe7a`, after #30 to #33 merged and main's CI passed there, and every step of the run passed, the tap check, the SBOM attestations and the workflow's own verification included. From a clean directory with anonymous registry access and cosign v3.1.4, `verify-blob` and `sha256sum --check` passed for the linux/amd64 archive, and `cosign verify` and `verify-attestation` for the index (`sha256:3b4b925e…`, also `latest`) and both platform digests; the binary and the image report `0.2.0`, and the binary's `variant --help` works. `go install github.com/ivanklee86/releash@v0.2.0` through proxy.golang.org reports `v0.2.0`. The cask in `ivanklee86/homebrew-tap` is at `0.2.0` and its four hashes match the signed `checksums.txt`; `brew install` was not run. GitHub's generated notes list #27, #28 and #29 under Features and #25, #26 and #30 to #33 under Other changes, and a Highlights section describing `variant` was added above them by hand with `gh release edit`.
 
 ### Close out
 
 - [x] Settle the spike's open questions on spec 0003's wording. Spec 0003's "Keep the variant sticky" now has the `remoteAddress` step and says the custom-stickiness context field is for the Unleash UI, and its "Unleash integration" bullet reads the stickiness the SDK hashes with; the milestone's risks name `variants-batch`.
-- [ ] Every M6 exit criterion holds. Set M6 to `done`, spec 0003 to `implemented`, and update this plan and internals.md. The README no longer has a status paragraph, so its only release-dependent text is the `0.1.2` pins in its examples, which move to `0.2.0`.
+- [x] Every M6 exit criterion holds. Set M6 to `done`, spec 0003 to `implemented`, and update this plan and internals.md. The README no longer has a status paragraph, so its only release-dependent text is the `0.1.2` pins in its examples, which move to `0.2.0`.
