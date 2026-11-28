@@ -135,7 +135,10 @@ var answerCommands = []string{"check", "variant"}
 //
 // The command is the first "check" or "variant" in args that is not the value
 // of an option: an option that takes a value in check or variant consumes the
-// next argument when it is written without "=", as it does for cobra.
+// next argument when it is written without "=", as it does for cobra. If every
+// command name was consumed that way, as in "--token check x" with an empty
+// $TOKEN, the first one consumed is the command, so the answer is still
+// printed although cobra would fail on the root command.
 func optionBeforeCommand(root *cobra.Command, args []string) (name, option string, ok bool) {
 	var sets []*pflag.FlagSet
 	for _, n := range answerCommands {
@@ -150,11 +153,26 @@ func optionBeforeCommand(root *cobra.Command, args []string) (name, option strin
 		})
 	}
 
+	// consumed is the first command name taken as an option's value.
+	var consumed string
+	skipValue := func(i int) int {
+		if i+1 < len(args) && consumed == "" && slices.Contains(answerCommands, args[i+1]) {
+			consumed = args[i+1]
+		}
+		return i + 1
+	}
+	notFound := func() (string, string, bool) {
+		if option != "" && consumed != "" {
+			return consumed, option, true
+		}
+		return "", "", false
+	}
+
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		switch {
 		case a == "--":
-			return "", "", false
+			return notFound()
 		case slices.Contains(answerCommands, a):
 			return a, option, option != ""
 		case a == "-h", a == "-v",
@@ -166,7 +184,7 @@ func optionBeforeCommand(root *cobra.Command, args []string) (name, option strin
 			}
 			n, _, hasValue := strings.Cut(a[2:], "=")
 			if !hasValue && takesValue(func(fs *pflag.FlagSet) *pflag.Flag { return fs.Lookup(n) }) {
-				i++
+				i = skipValue(i)
 			}
 		case strings.HasPrefix(a, "-"):
 			if option == "" {
@@ -178,14 +196,14 @@ func optionBeforeCommand(root *cobra.Command, args []string) (name, option strin
 				short := a[j : j+1]
 				if takesValue(func(fs *pflag.FlagSet) *pflag.Flag { return fs.ShorthandLookup(short) }) {
 					if j == len(a)-1 {
-						i++
+						i = skipValue(i)
 					}
 					break
 				}
 			}
 		}
 	}
-	return "", "", false
+	return notFound()
 }
 
 // fallbackAnswer returns what cmd prints on stdout when releash cannot run it
