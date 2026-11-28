@@ -199,7 +199,7 @@ Releases are cut with the `/release` Claude Code skill. Its first run opens a "R
 | Hook | Script | What it does |
 |---|---|---|
 | After `Edit`, `Write` or `MultiEdit` | `format-go.sh` | Formats an edited `.go` file with `golangci-lint fmt`. It never blocks, and reports a file it cannot format. |
-| Before `Bash` and the GitHub MCP merge tool | `guard.sh` | Refuses `task services:down` and `docker compose down`, which delete the shared local stack, and merging a pull request, which only the user does. Compound commands are checked piece by piece. |
+| Before `Bash` and the GitHub MCP merge tool | `guard.sh` | Refuses `task services:down`, `docker compose down`, `docker compose rm` with volumes and `docker volume rm` or `prune`, which delete the shared local stack or its data, and merging a pull request, which only the user does. Compound commands, subshells and `bash -c` payloads are checked piece by piece. |
 | End of a turn | `stop-check.sh` | When the tree changed since the last pass, runs `task` and `prek run --all-files`, and sends a failure back so Claude fixes it. A second failure in a row is reported without blocking, so it cannot loop. |
 
 The same refusals are also `permissions.deny` rules, so they hold with hooks turned off. The hooks guard against mistakes; they are not a security boundary. Integration tests are not run at the end of a turn, because they need the shared stack and take over a minute. Personal overrides go in `.claude/settings.local.json`, which git ignores.
