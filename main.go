@@ -26,9 +26,19 @@ var version string
 // UNLEASH_API_TOKEN) rather than a common prefix, so each flag names its own.
 const envAnnotation = "releash_env"
 
-// answerAnnotation marks a command whose stdout is always exactly "true\n" or
-// "false\n" (ADR 0004), so run prints "false" for errors and panics in it.
+// answerAnnotation marks a command whose stdout always holds an answer
+// (ADR 0004), so run prints the fallback answer for errors and panics in it.
+// Its value says which kind of answer: booleanAnswer or variantAnswer.
 const answerAnnotation = "releash_answer"
+
+// The values of answerAnnotation.
+const (
+	// booleanAnswer is check's answer: exactly "true\n" or "false\n".
+	booleanAnswer = "boolean"
+	// variantAnswer is variant's answer: the variables of spec 0003, with the
+	// disabled variant as the fallback (see variantFallback).
+	variantAnswer = "variant"
+)
 
 // checkSynopsis is the usage line of releash check from spec 0001.
 const checkSynopsis = `  releash check <flag> [--url <url>] [--token <token>] [--timeout <duration>] [--loud]
@@ -63,28 +73,33 @@ func (e exitCodeError) Error() string {
 
 // run executes root with args and returns its exit code. It is the only place
 // that turns cobra errors and panics into exit codes: errors from parsing the
-// command line exit 2, as does an option given before the check command (see
-// optionBeforeCheck), and a panic in a command is reported on stderr and
-// exits 1 (ADR 0004), rather than Go's default of 2, which would look like a
-// bad command line. For a command with answerAnnotation, both also print
-// "false" on stdout.
+// command line exit 2, as does an option given before the check or variant
+// command (see optionBeforeCommand), and a panic in a command is reported on
+// stderr and exits 1 (ADR 0004), rather than Go's default of 2, which would
+// look like a bad command line. For a command with answerAnnotation, both
+// also print the command's fallback answer on stdout (see fallbackAnswer).
 func run(root *cobra.Command, args []string, stdout, stderr io.Writer) (code int) {
 	defer func() {
 		if p := recover(); p != nil {
 			code = releash.ExitInternal
 			// ExecuteC never returned, so look the command up the way it does.
-			if c, _, err := root.Find(args); err == nil && answers(c) {
-				_, _ = fmt.Fprintf(stderr, "releash: internal error: %v\n", p)
-				_, _ = fmt.Fprintln(stdout, "false")
-				return
+			if c, _, err := root.Find(args); err == nil {
+				if answer, ok := fallbackAnswer(c, args); ok {
+					_, _ = fmt.Fprintf(stderr, "releash: internal error: %v\n", p)
+					_, _ = io.WriteString(stdout, answer)
+					return
+				}
 			}
 			_, _ = fmt.Fprintf(stderr, "Error: internal error: %v\n", p)
 		}
 	}()
 
-	if opt, ok := optionBeforeCheck(args); ok {
-		_, _ = fmt.Fprintf(stderr, "releash: %s given before check; put options after 'check <flag>'\nRun 'releash check --help' for usage.\n", opt)
-		_, _ = fmt.Fprintln(stdout, "false")
+	if name, opt, ok := optionBeforeCommand(root, args); ok {
+		_, _ = fmt.Fprintf(stderr, "releash: %s given before %s; put options after '%s <flag>'\nRun 'releash %s --help' for usage.\n", opt, name, name, name)
+		if c, _, err := root.Find([]string{name}); err == nil {
+			answer, _ := fallbackAnswer(c, args)
+			_, _ = io.WriteString(stdout, answer)
+		}
 		return releash.ExitUsage
 	}
 
@@ -97,57 +112,125 @@ func run(root *cobra.Command, args []string, stdout, stderr io.Writer) (code int
 		return int(exit)
 	}
 	// Every other error comes from cobra parsing the command line.
-	if answers(cmd) {
+	if answer, ok := fallbackAnswer(cmd, args); ok {
 		_, _ = fmt.Fprintf(stderr, "releash: %v\nRun '%s --help' for usage.\n", err, cmd.CommandPath())
-		_, _ = fmt.Fprintln(stdout, "false")
+		_, _ = io.WriteString(stdout, answer)
 		return releash.ExitUsage
 	}
 	_, _ = fmt.Fprintf(stderr, "Error: %v\nRun 'releash --help' for usage.\n", err)
 	return releash.ExitUsage
 }
 
-// optionBeforeCheck returns the first option that comes before the check
-// command in args, other than --help, -h, --version and -v (also written as
-// --help=... or --version=...). The root command has
-// no other options, and cobra's lookup of the subcommand guesses whether an
-// unknown option takes a value, so without this some such invocations would
-// run check and others would fail on the root command with empty stdout.
-func optionBeforeCheck(args []string) (string, bool) {
-	i := slices.Index(args, "check")
-	if i < 0 {
-		return "", false
+// answerCommands are the commands that carry answerAnnotation, which
+// optionBeforeCommand looks for.
+var answerCommands = []string{"check", "variant"}
+
+// optionBeforeCommand returns the name of the check or variant command in
+// args and the first option that comes before it, other than --help, -h,
+// --version and -v (also written as --help=... or --version=...). The root
+// command has no other options, and cobra's lookup of the subcommand guesses
+// whether an unknown option takes a value, so without this some such
+// invocations would run the command and others would fail on the root command
+// with empty stdout.
+//
+// The command is the first "check" or "variant" in args that is not the value
+// of an option: an option that takes a value in check or variant consumes the
+// next argument when it is written without "=", as it does for cobra. If every
+// command name was consumed that way, as in "--token check x" with an empty
+// $TOKEN, the first one consumed is the command, so the answer is still
+// printed although cobra would fail on the root command.
+func optionBeforeCommand(root *cobra.Command, args []string) (name, option string, ok bool) {
+	var sets []*pflag.FlagSet
+	for _, n := range answerCommands {
+		if c, _, err := root.Find([]string{n}); err == nil && c != root {
+			sets = append(sets, c.Flags())
+		}
 	}
-	for _, a := range args[:i] {
+	takesValue := func(lookup func(*pflag.FlagSet) *pflag.Flag) bool {
+		return slices.ContainsFunc(sets, func(fs *pflag.FlagSet) bool {
+			fl := lookup(fs)
+			return fl != nil && fl.NoOptDefVal == ""
+		})
+	}
+
+	// consumed is the first command name taken as an option's value.
+	var consumed string
+	skipValue := func(i int) int {
+		if i+1 < len(args) && consumed == "" && slices.Contains(answerCommands, args[i+1]) {
+			consumed = args[i+1]
+		}
+		return i + 1
+	}
+	notFound := func() (string, string, bool) {
+		if option != "" && consumed != "" {
+			return consumed, option, true
+		}
+		return "", "", false
+	}
+
+	for i := 0; i < len(args); i++ {
+		a := args[i]
 		switch {
 		case a == "--":
-			return "", false
+			return notFound()
+		case slices.Contains(answerCommands, a):
+			return a, option, option != ""
 		case a == "-h", a == "-v",
 			a == "--help", strings.HasPrefix(a, "--help="),
 			a == "--version", strings.HasPrefix(a, "--version="):
+		case strings.HasPrefix(a, "--"):
+			if option == "" {
+				option = a
+			}
+			n, _, hasValue := strings.Cut(a[2:], "=")
+			if !hasValue && takesValue(func(fs *pflag.FlagSet) *pflag.Flag { return fs.Lookup(n) }) {
+				i = skipValue(i)
+			}
 		case strings.HasPrefix(a, "-"):
-			return a, true
+			if option == "" {
+				option = a
+			}
+			// A run of shorthands ends at the first one that takes a value,
+			// which takes the rest of the argument or the next one.
+			for j := 1; j < len(a); j++ {
+				short := a[j : j+1]
+				if takesValue(func(fs *pflag.FlagSet) *pflag.Flag { return fs.ShorthandLookup(short) }) {
+					if j == len(a)-1 {
+						i = skipValue(i)
+					}
+					break
+				}
+			}
 		}
+	}
+	return notFound()
+}
+
+// fallbackAnswer returns what cmd prints on stdout when releash cannot run it
+// with args, and false if cmd does not carry answerAnnotation: "false\n" for
+// check, and for variant the disabled variant in the format and prefix that
+// args give, or nothing when they give none (see variantFallback).
+func fallbackAnswer(cmd *cobra.Command, args []string) (string, bool) {
+	if cmd == nil {
+		return "", false
+	}
+	switch cmd.Annotations[answerAnnotation] {
+	case booleanAnswer:
+		return "false\n", true
+	case variantAnswer:
+		return variantFallback(cmd, args), true
 	}
 	return "", false
 }
 
-// answers reports whether cmd carries answerAnnotation.
-func answers(cmd *cobra.Command) bool {
-	if cmd == nil {
-		return false
-	}
-	_, ok := cmd.Annotations[answerAnnotation]
-	return ok
-}
-
 // NewRootCommand returns the releash root command, which prints help when run
-// without a subcommand. It and its check command print "releash version
-// <version>" for --version. Its subcommands write through r.
+// without a subcommand. It and its check and variant commands print "releash
+// version <version>" for --version. Its subcommands write through r.
 func NewRootCommand(r *releash.Releash, version string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "releash",
 		Short:   "Drive CI/CD changes with Unleash feature flags.",
-		Long:    "releash asks Unleash whether a feature flag is enabled, so CI/CD pipelines can gate rollout steps on it.",
+		Long:    "releash asks Unleash whether a feature flag is enabled, so CI/CD pipelines can gate rollout steps on it, and loads a flag's variant as environment variables to configure those steps.",
 		Version: version,
 		Args:    cobra.NoArgs,
 		// Completion is not part of the M1 contract, and cobra's completion
@@ -170,7 +253,7 @@ func NewRootCommand(r *releash.Releash, version string) *cobra.Command {
 	// Subcommands inherit the template. The default one would print
 	// "releash check version ..." for check.
 	cmd.SetVersionTemplate("releash version {{.Version}}\n")
-	cmd.AddCommand(newCheckCommand(r, version))
+	cmd.AddCommand(newCheckCommand(r, version), newVariantCommand(r, version))
 	plainHelpAndVersion(cmd)
 	// cobra would add its help command only when it runs, too late for
 	// plainHelpAndVersion. Adding it here makes cobra reuse this one.
@@ -224,7 +307,7 @@ to stderr and exits non-zero: 2 for a bad command line, 3 for a missing
 Unleash URL or token, 4 for an invalid value and 5 for a value given twice.`,
 		Version:     version,
 		Args:        checkArgs,
-		Annotations: map[string]string{answerAnnotation: ""},
+		Annotations: map[string]string{answerAnnotation: booleanAnswer},
 		RunE: func(_ *cobra.Command, args []string) error {
 			opts.Flag = args[0]
 			opts.Given = given
@@ -237,10 +320,22 @@ Unleash URL or token, 4 for an invalid value and 5 for a value given twice.`,
 
 	f := cmd.Flags()
 	f.SortFlags = false
+	addCheckFlags(f, &opts, "explain on stderr why the answer is false")
+	countValues(f, given)
+
+	cmd.SetUsageFunc(usage(checkSynopsis, releash.ReleashOptions()))
+	plainHelpAndVersion(cmd)
+	return cmd
+}
+
+// addCheckFlags defines the connection and context options that check and
+// variant share in f, bound to opts, with loudUsage as the help text of
+// --loud. --url and --token fall back to UNLEASH_URL and UNLEASH_API_TOKEN.
+func addCheckFlags(f *pflag.FlagSet, opts *releash.CheckOptions, loudUsage string) {
 	f.StringVar(&opts.URL, releash.OptionURL, "", "Unleash API `url`, including /api (env UNLEASH_URL)")
 	f.StringVar(&opts.Token, releash.OptionToken, "", "Unleash client API `token` (env UNLEASH_API_TOKEN, which keeps it out of process listings)")
 	f.StringVar(&opts.Timeout, releash.OptionTimeout, releash.DefaultTimeout.String(), "how long to wait for Unleash, as a positive Go `duration`")
-	f.BoolVar(&opts.Loud, releash.OptionLoud, false, "explain on stderr why the answer is false")
+	f.BoolVar(&opts.Loud, releash.OptionLoud, false, loudUsage)
 	f.StringVar(&opts.Env, releash.OptionEnv, releash.DefaultEnvironment, "environment in the context, as a `name`")
 	f.StringVar(&opts.AppName, releash.OptionAppName, releash.DefaultAppName, "appName in the context, and the `name` releash registers with")
 	f.StringVar(&opts.UserID, releash.OptionUserID, "", "userId in the context, as an `id`")
@@ -251,18 +346,19 @@ Unleash URL or token, 4 for an invalid value and 5 for a value given twice.`,
 
 	mustAnnotate(f, releash.OptionURL, envAnnotation, "UNLEASH_URL")
 	mustAnnotate(f, releash.OptionToken, envAnnotation, "UNLEASH_API_TOKEN")
-	// pflag keeps only the last value of a repeated option, so count the
-	// values as they are set. --properties may be repeated, and wrapping it
-	// would also hide its empty default from pflag's help.
+}
+
+// countValues wraps every flag in f in a countedValue that counts into
+// given, except the string array flags, which keep every value themselves.
+// pflag keeps only the last value of a repeated option, so the counts are
+// how validation finds repeats. Wrapping an array flag would also hide its
+// empty default from pflag's help.
+func countValues(f *pflag.FlagSet, given map[string]int) {
 	f.VisitAll(func(fl *pflag.Flag) {
-		if fl.Name != releash.OptionProperties {
+		if fl.Value.Type() != "stringArray" {
 			fl.Value = &countedValue{Value: fl.Value, count: given, name: fl.Name}
 		}
 	})
-
-	cmd.SetUsageFunc(checkUsage)
-	plainHelpAndVersion(cmd)
-	return cmd
 }
 
 // checkArgs requires exactly one argument, the flag name.
@@ -277,33 +373,36 @@ func checkArgs(_ *cobra.Command, args []string) error {
 	}
 }
 
-// checkUsage writes the usage of the check command, with releash options and
-// context options under separate headings, in the order spec 0001 gives.
-func checkUsage(cmd *cobra.Command) error {
-	var b strings.Builder
-	fmt.Fprintf(&b, "Usage:\n%s\n", checkSynopsis)
-	groups := []struct {
-		title string
-		names []string
-	}{
-		{"Releash options", releash.ReleashOptions()},
-		{"Context options", releash.ContextOptions()},
-		{"Other options", []string{"help", "version"}},
-	}
-	for _, g := range groups {
-		fs := pflag.NewFlagSet(g.title, pflag.ContinueOnError)
-		fs.SortFlags = false
-		for _, name := range g.names {
-			if fl := cmd.Flags().Lookup(name); fl != nil {
-				fs.AddFlag(fl)
+// usage returns the usage function of the check or variant command: synopsis,
+// then releashOptions, the context options of spec 0001 and the other
+// options (--help, --version), each under its own heading, in that order.
+func usage(synopsis string, releashOptions []string) func(*cobra.Command) error {
+	return func(cmd *cobra.Command) error {
+		var b strings.Builder
+		fmt.Fprintf(&b, "Usage:\n%s\n", synopsis)
+		groups := []struct {
+			title string
+			names []string
+		}{
+			{"Releash options", releashOptions},
+			{"Context options", releash.ContextOptions()},
+			{"Other options", []string{"help", "version"}},
+		}
+		for _, g := range groups {
+			fs := pflag.NewFlagSet(g.title, pflag.ContinueOnError)
+			fs.SortFlags = false
+			for _, name := range g.names {
+				if fl := cmd.Flags().Lookup(name); fl != nil {
+					fs.AddFlag(fl)
+				}
+			}
+			if fs.HasFlags() {
+				fmt.Fprintf(&b, "\n%s:\n%s", g.title, fs.FlagUsages())
 			}
 		}
-		if fs.HasFlags() {
-			fmt.Fprintf(&b, "\n%s:\n%s", g.title, fs.FlagUsages())
-		}
+		_, err := io.WriteString(cmd.OutOrStderr(), b.String())
+		return err
 	}
-	_, err := io.WriteString(cmd.OutOrStderr(), b.String())
-	return err
 }
 
 // countedValue wraps a flag value and counts how many times it is set, by

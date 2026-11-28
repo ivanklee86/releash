@@ -30,42 +30,63 @@ const (
 // metrics and look like an evaluation error.
 const refreshInterval = 24 * time.Hour
 
-// outcome is the answer evaluate gives for one check.
+// outcome is the answer evaluate gives for one check or variant.
 type outcome struct {
-	// enabled is the answer. It is false whenever fallback is set.
+	// enabled is the answer to a check. It is false whenever fallback is set.
 	enabled bool
-	// fallback says why the answer fell back to false instead of being
-	// evaluated, as a --loud line without the "releash: " prefix. It is empty
-	// for an evaluated answer.
+	// output is the rendered variables of an evaluated variant. Only the
+	// variant command's question sets it, and only when fallback is empty and
+	// refused is false.
+	output string
+	// refused reports that the variant command found the flag in the fetched
+	// flags and disabled for the context, which exits ExitDisabled. It is
+	// false whenever fallback is set.
+	refused bool
+	// fallback says why the answer fell back to false, or to the disabled
+	// variant, instead of being evaluated, as a --loud line without the
+	// "releash: " prefix and without the "; returning ..." ending that the
+	// command adds. It is empty for an evaluated answer.
 	fallback string
 	// notes are --loud lines, without the "releash: " prefix, about problems
 	// that did not change the answer, such as a rejected registration.
 	notes []string
 }
 
-// evaluator answers a validated check. Releash uses evaluate unless a test
-// replaces it.
+// evaluator answers a validated check or variant. Releash uses evaluate
+// unless a test replaces it.
 type evaluator func(ctx context.Context, req checkRequest) outcome
 
+// question is the final call of an evaluation: it evaluates req.flag with a
+// client whose first fetch succeeded. It is the only part of evaluate that
+// differs between check and variant.
+type question func(client *unleash.Client, req checkRequest) outcome
+
 // evaluate fetches the flags req's token can see from Unleash, once, and
-// evaluates req.flag against req.context with the Unleash Go SDK.
+// evaluates req.flag against req.context with the Unleash Go SDK by asking
+// req.ask, or evaluateFlag when req.ask is nil.
 //
 // The whole call, including registering with Unleash and closing the SDK
 // client, finishes within req.timeout. The register request may take only
 // registerTimeout(req.timeout), so a slow register cannot use up the time
-// the feature fetch needs. The answer is false, with fallback set, when the
+// the feature fetch needs. The answer falls back, with fallback set, when the
 // first feature fetch fails, is not a 2xx response, or does not finish in
-// time, when the flag is not in the fetched flags, or when the SDK cannot
-// evaluate it. When req.context has no remoteAddress, the flag is evaluated
-// with the local IP address of the connection that fetched the flags, or,
-// when there is none, without one and with a note saying so. Fetched flags
-// are kept in memory only, so evaluate never reads or writes files, and
-// nothing carries over from one call to the next.
+// time, when the question falls back, such as for a flag that is not in the
+// fetched flags, or when the SDK cannot evaluate the flag. An evaluation
+// error takes precedence over a refused outcome. When req.context has no
+// remoteAddress, the flag is evaluated with the local IP address of the
+// connection that fetched the flags, or, when there is none, without one and
+// with a note saying so. Fetched flags are kept in memory only, so evaluate
+// never reads or writes files, and nothing carries over from one call to the
+// next.
 //
-// After an evaluated answer, evaluate waits within req.timeout for Unleash to
-// accept the check's usage metrics. A failed or unfinished send adds a note
-// and never changes the answer.
+// After an evaluated answer that is not refused, evaluate waits within
+// req.timeout for Unleash to accept the usage metrics. A failed or unfinished
+// send adds a note and never changes the answer.
 func evaluate(ctx context.Context, req checkRequest) outcome {
+	ask := req.ask
+	if ask == nil {
+		ask = evaluateFlag
+	}
 	runCtx, cancel := context.WithTimeout(ctx, req.timeout)
 	defer cancel()
 
@@ -100,7 +121,7 @@ func evaluate(ctx context.Context, req checkRequest) outcome {
 		unleash.WithRefreshInterval(refreshInterval),
 	)
 	if err != nil {
-		return outcome{fallback: fmt.Sprintf("cannot start the Unleash client: %v; returning false", err)}
+		return outcome{fallback: fmt.Sprintf("cannot start the Unleash client: %v", err)}
 	}
 
 	var out outcome
@@ -115,12 +136,13 @@ func evaluate(ctx context.Context, req checkRequest) outcome {
 		}
 		fetched = true
 		req.context, addressNote = withRemoteAddress(req.context, local.address())
-		out = evaluateFlag(client, req)
-		// A fallback has no usage worth waiting to report.
-		if out.fallback == "" {
+		out = ask(client, req)
+		// A fallback has no usage worth waiting to report, and a refused
+		// variant fails the pipeline step anyway.
+		if out.fallback == "" && !out.refused {
 			var err error
 			if metricsNote, err = awaitMetrics(runCtx, events, log, req.timeout); err != nil {
-				out = out.evaluationFailed(req.flag, err)
+				out = evaluationFailed(req.flag, err)
 			}
 		}
 	case err := <-events.failed:
@@ -135,9 +157,11 @@ func evaluate(ctx context.Context, req checkRequest) outcome {
 	cancel()
 	_ = client.Close()
 
+	// A flag the SDK could not evaluate also looks disabled, so a refused
+	// outcome holds only once this has found no error.
 	if fetched && out.fallback == "" {
 		if err := evaluationError(client, events); err != nil {
-			out = out.evaluationFailed(req.flag, err)
+			out = evaluationFailed(req.flag, err)
 		}
 	}
 
@@ -162,13 +186,14 @@ func evaluate(ctx context.Context, req checkRequest) outcome {
 	return out
 }
 
-// evaluationFailed returns o turned into the fallback for flag after the SDK
-// reported err while evaluating it. The notes in o are kept.
-func (o outcome) evaluationFailed(flag string, err error) outcome {
-	return outcome{fallback: fmt.Sprintf("unleash could not evaluate flag %q: %v; returning false", flag, err), notes: o.notes}
+// evaluationFailed returns the fallback for flag after the SDK reported err
+// while evaluating it. Notes the question made about its answer no longer
+// apply, so it has none.
+func evaluationFailed(flag string, err error) outcome {
+	return outcome{fallback: fmt.Sprintf("unleash could not evaluate flag %q: %v", flag, err)}
 }
 
-// evaluateFlag evaluates req.flag with a client whose first fetch succeeded.
+// evaluateFlag is the check command's question: whether req.flag is enabled.
 func evaluateFlag(client *unleash.Client, req checkRequest) outcome {
 	found := true
 	enabled := client.IsEnabled(req.flag, unleash.FeatureOptions{
@@ -181,9 +206,14 @@ func evaluateFlag(client *unleash.Client, req checkRequest) outcome {
 		},
 	})
 	if !found {
-		return outcome{fallback: fmt.Sprintf("flag %q not found; returning false", req.flag)}
+		return notFound(req.flag)
 	}
 	return outcome{enabled: enabled}
+}
+
+// notFound is the fallback for a flag that is not in the fetched flags.
+func notFound(flag string) outcome {
+	return outcome{fallback: fmt.Sprintf("flag %q not found", flag)}
 }
 
 // evaluationError returns the error the SDK reported while client evaluated
@@ -238,21 +268,21 @@ func fetchFailure(runCtx context.Context, timeout time.Duration, seen requestOut
 	case runCtx.Err() != nil || isTimeout(err) || isTimeout(seen.err):
 		return timedOut(timeout)
 	case seen.err != nil:
-		return fmt.Sprintf("unleash unreachable: %v; returning false", seen.err)
+		return fmt.Sprintf("unleash unreachable: %v", seen.err)
 	case seen.status == http.StatusUnauthorized || seen.status == http.StatusForbidden:
-		return fmt.Sprintf("unleash rejected the API token (HTTP %d); returning false", seen.status)
+		return fmt.Sprintf("unleash rejected the API token (HTTP %d)", seen.status)
 	case seen.status != 0 && !isSuccess(seen.status):
-		return fmt.Sprintf("unleash answered the feature fetch with HTTP %d; returning false", seen.status)
+		return fmt.Sprintf("unleash answered the feature fetch with HTTP %d", seen.status)
 	case seen.status != 0:
-		return fmt.Sprintf("unleash sent a malformed feature response: %v; returning false", err)
+		return fmt.Sprintf("unleash sent a malformed feature response: %v", err)
 	default:
 		// The request never reached the transport, e.g. it could not be built.
-		return fmt.Sprintf("unleash unreachable: %v; returning false", err)
+		return fmt.Sprintf("unleash unreachable: %v", err)
 	}
 }
 
 func timedOut(timeout time.Duration) string {
-	return fmt.Sprintf("unleash did not answer within %s; returning false", timeout)
+	return fmt.Sprintf("unleash did not answer within %s", timeout)
 }
 
 // registerFailure returns the --loud note for a failed register request that
