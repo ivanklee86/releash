@@ -183,7 +183,7 @@ Pass `check` and `variant` the same context. If they differ, `check` can answer 
 
 ### Keep the variant sticky
 
-Unleash assigns variants by the variant's stickiness. Default stickiness uses `userId`, then `sessionId`; the Go SDK then uses `remoteAddress`, which releash sets to the runner's address when `--remote-address` is not given, and only then picks at random. A pipeline usually sets neither ID, so without help the variant can change from run to run on ephemeral CI runners, and it follows the host rather than the repository on fixed ones. releash does not detect the CI system, so pass something that identifies what you are experimenting on, usually the repository or pipeline.
+Unleash assigns variants by the variant's stickiness. To pick the variant, default stickiness uses `userId`, then `sessionId`; the Go SDK then uses `remoteAddress`, which releash sets to the local address of its connection to Unleash when `--remote-address` is not given, and only then picks at random. A gradual rollout on default stickiness skips `remoteAddress`: without `userId` or `sessionId`, whether the flag is on at all is decided at random on every run. A pipeline usually sets neither ID, so without help a partial rollout turns on and off from run to run, and the variant follows the connection's address rather than the repository; containers and proxies can give every repository the same address, and so the same variant. releash does not detect the CI system, so pass something that identifies what you are experimenting on, usually the repository or pipeline.
 
 The simplest way is to pass the repository as `--user-id`. It needs no change in Unleash, and each repository always gets the same variant. Pass the same `--user-id` to `check`, so that a gradual rollout on default stickiness puts the gate and the variant in the same bucket:
 
@@ -191,7 +191,7 @@ The simplest way is to pass the repository as `--user-id`. It needs no change in
 releash variant checkout-redesign --user-id "$GITHUB_REPOSITORY" >> "$GITHUB_ENV"
 ```
 
-If `userId` already means something else in your Unleash setup, pass a custom property instead, to `check` too, and set the variant's stickiness to that property in Unleash. Create the property as a context field with stickiness enabled, so that Unleash offers it as a stickiness option:
+If `userId` already means something else in your Unleash setup, pass a custom property instead, to `check` too, and set the variant's stickiness to that property in Unleash. Create the property as a context field with stickiness enabled, so that Unleash offers it as a stickiness option. Custom stickiness does not fall back to `userId`. A run that omits the property gets a random feature variant, and a strategy whose stickiness is that property does not match at all, so unless another strategy matches the flag is off for that run: `check` prints `false` and `variant` exits 6:
 
 ```sh
 releash variant checkout-redesign --properties repo="$GITHUB_REPOSITORY" >> "$GITHUB_ENV"

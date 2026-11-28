@@ -4,7 +4,7 @@ Started 2026-11-27. Status: in progress. Milestone: [M6](../milestones/M6-varian
 
 ## Resume here
 
-Updated 2026-11-27. The spike against Unleash 8.3.1 has run (see [Spike findings](#reference)). PR 1 is on branch `m6/variables`, waiting for review: the acceptance edits, this plan and the `internal/variant` package. PR 2 is on branch `m6/command`, stacked on it and also waiting for review: the `variant` command, with the PR 2 decisions below for the user to confirm. PR 3 is on branch `m6/scenarios`, stacked on `m6/command`: the variant fixtures, the integration scenarios and the README, with the PR 3 decisions below for the user to confirm. None is pushed. The spike's questions about spec 0003's wording are still open; the README already describes what the spike found. Next is `v0.2.0`, once the three PRs are merged. The plan is three stacked PRs: the variable and format rules, the `variant` command, and the fixtures with the integration scenarios and README. Then `v0.2.0`. When resuming, start the first step in [Steps](#steps) that is not checked off and whose dependencies are done. Before ending a session, update this section and check off finished steps.
+Updated 2026-11-28. PRs 1 to 3 are merged as #27, #28 and #29. Spec 0003 and the M6 milestone are amended to the spike's stickiness findings on branch `docs/variant-stickiness`. Next is `v0.2.0`, on the user's go, then the close-out. When resuming, start the first step in [Steps](#steps) that is not checked off and whose dependencies are done. Before ending a session, update this section and check off finished steps.
 
 ## How to work through this plan
 
@@ -61,12 +61,12 @@ Spike findings, 2026-11-27, against Unleash 8.3.1 at `localhost:4242` with `unle
 5. Metrics (matches spec 0003). One `GetVariant` sends a toggle entry `{"yes": 1, "no": 0, "variants": {"j": 1}}`, and Unleash stores the variant counts. An enabled flag without variants counts `yes: 1` and `variants: {disabled: 1}`; a disabled flag, an unknown flag and a missing segment count `no: 1` and `variants: {disabled: 1}`. The SDK counts a fallback evaluation in its buffer even though releash does not wait for the send.
 6. `json` payload values (matches spec 0003). The Client API serves `payload.value` as a string holding the JSON text exactly as stored, and it reaches `api.Payload` unchanged, so `1.0` and `12345678901234567890` keep their text. Duplicate keys also arrive verbatim, so releash's duplicate-member check is needed against real Unleash. Invalid JSON and unknown payload types cannot be stored through the 8.3.1 Admin API, so those fallbacks can only be tested with `FakeUnleash`. A `number` payload `1.50` stays `1.50`, and a non-numeric one such as `abc` is served as is.
 
-Open questions from the spike, for the user before PR 2 and PR 3 (none affects PR 1):
+Questions from the spike, settled on 2026-11-28: the user asked for the doc updates after PR 3, and spec 0003 and the milestone now say what the first four points propose.
 
-- The default-stickiness `--loud` warning: spec 0003 says it reads the stickiness of feature variants and strategy variants, but the SDK decides strategy-variant stickiness by the strategy's `stickiness` parameter. Proposed: read `Strategies[].Parameters["stickiness"]` for strategy variants and `Variants[0].Stickiness` for feature variants, and amend spec 0003's "Unleash integration" to match.
-- Spec 0003's "Keep the variant sticky" and its stickiness bullet should add the `remoteAddress` step, and say that without `--user-id` runs stick to the runner's address rather than being random.
-- Spec 0003 says a custom stickiness property must exist as a context field with stickiness enabled. Evaluation does not need it; only the Unleash UI does. Proposed: keep the advice, worded as what the UI needs.
-- `seed.py` and `integration.CreateFlag` write feature variants through `variants-batch` (finding 1); the milestone's risk section names the per-environment endpoint.
+- The default-stickiness `--loud` warning reads `Strategies[].Parameters["stickiness"]` for strategy variants and `Variants[0].Stickiness` for feature variants, as the SDK does; spec 0003's "Unleash integration" says so.
+- Spec 0003's "Keep the variant sticky" has the `remoteAddress` step, which applies only to choosing the variant: a gradual rollout on default stickiness skips it and decides on or off at random without `userId` or `sessionId`.
+- The custom-stickiness context field is advised for the Unleash UI only, since evaluation does not need it. A run that omits the property gets a random feature variant, and a strategy with that stickiness does not match.
+- `seed.py` and `integration.CreateVariantFlag` write feature variants through `variants-batch` (finding 1), and the milestone's risk section names it.
 - Found while testing PR 2, for information: SDK v6.5.1 panics (`interface conversion: interface {} is nil, not string`) when it evaluates a `flexibleRollout` strategy that has no `stickiness` parameter, for `check` and `variant` alike. The panic is on releash's goroutine, so `run` recovers it as exit 1 with the fallback. Unleash always stores the parameter, so only a hand-written response can trigger it; the unit tests use a `default` strategy with a `groupId` for strategy variants without a stickiness parameter.
 
 ## Steps
@@ -74,21 +74,21 @@ Open questions from the spike, for the user before PR 2 and PR 3 (none affects P
 ### PR 1: variable names and formats
 
 - [x] Branch `m6/variables`.
-- [x] Implemented: `f33a999`, `ee0447a` and the review fixes in `6d28595`, with `task`, `prek run --all-files` and `task go:test-integration` passing. Waiting for the user's `/ship`.
+- [x] Implemented: `f33a999`, `ee0447a` and the review fixes in `6d28595` and `fe32b9f`. Merged as #27.
 - Contents: the acceptance edits above; this plan in `docs/agents/plans`; a new package (e.g. `internal/variant`) that turns an evaluated result (enabled, variant name, payload type and value) into the ordered variables of spec 0003 and renders them as `dotenv` or `shell`: prefix validation and the default prefix from a flag name, normalisation per Unicode code point, flattening with `__` and indices, number text preserved, `null` as empty, empty containers and scalar roots, every kind of collision, invalid JSON, unrepresentable values per format, and the fallback (disabled variant) output. Exhaustive table-driven unit tests, including a test that `eval` of `shell` output in `/bin/sh` reproduces values with `'`, `$`, backticks, `\`, spaces and newlines. No network, no CLI. `docs/agents/internals.md`.
 - Milestone criteria: flattening, normalisation, collisions, formats.
 
 ### PR 2: the variant command
 
 - [x] Branch `m6/command`, stacked on `m6/variables`.
-- [x] Implemented, with `task`, `prek run --all-files` and `task go:test-integration` passing; the existing `check` tests pass unchanged. `evaluate` takes the final call as a `question` in the request, the variant command lives in `variant.go` and `internal/releash/variant.go`, and the decisions above are recorded. Waiting for review, after PR 1.
+- [x] Implemented, with `task`, `prek run --all-files` and `task go:test-integration` passing; the existing `check` tests pass unchanged. `evaluate` takes the final call as a `question` in the request, the variant command lives in `variant.go` and `internal/releash/variant.go`, and the decisions above are recorded. Review fix `01c060e`. Merged as #28.
 - Contents: exit code 6 in `internal/releash`; `evaluate` generalised so `check` and `variant` share one path (storage, timeout, register deadline, readiness, error sorting, fallbacks, `remoteAddress`, metrics wait) and differ only in the final call; `variant` calls `GetVariant` with no fallback, tells unknown from disabled through the fetched flags, lets an SDK evaluation error take precedence over exit 6, skips the metrics wait for fallbacks and exit 6, and emits the default-stickiness `--loud` warning. `main.go`: the `variant` command with `--format` and `--prefix` plus every `check` option, sharing their definitions, validation and `countedValue`; options before the command rejected for both commands; the three help headings and plain `--help` and `--version`; the raw-argument scan for `--format` and `--prefix` (reading option values as pflag does) that decides the fallback's format and prefix for every exit 1 to 5 and recovered panics; empty stdout where the spec says so. Unit tests against fake Unleash servers for every row of spec 0003's test plan that needs no real Unleash, and the root-command tests for the CLI rules. `docs/agents/internals.md`.
 - Milestone criteria: help, shared options, exit 6, unknown versus disabled, fallbacks, command errors, the scan, metrics, stickiness warning.
 
 ### PR 3: fixtures, integration scenarios and docs
 
 - [x] Branch `m6/scenarios`, stacked on `m6/command`.
-- [x] Implemented, with `task`, `prek run --all-files` and `task go:test-integration` (twice in a row) passing, and `task services` applied to the shared stack and idempotent. Seven variant fixtures and the `repo` context field, the seed writing feature variants through `variants-batch`, `CreateVariantFlag`, the variant scenarios in `internal/releash/variant_scenarios_integration_test.go` and `main_integration_test.go`, the README's Variants section and pipeline examples, and the PR 3 decisions above. Waiting for review, after PR 2.
+- [x] Implemented, with `task`, `prek run --all-files` and `task go:test-integration` (twice in a row) passing, and `task services` applied to the shared stack and idempotent. Seven variant fixtures and the `repo` context field, the seed writing feature variants through `variants-batch`, `CreateVariantFlag`, the variant scenarios in `internal/releash/variant_scenarios_integration_test.go` and `main_integration_test.go`, the README's Variants section and pipeline examples, and the PR 3 decisions above. Merged as #29.
 - Contents: `unleash/fixtures.json` and `unleash/seed.py` gain flags with `json`, `string`, `number` and `csv` payloads, a weighted split, custom stickiness and a disabled flag with variants, through the Unleash 8.3.1 Admin API the spike confirms; `TestClientTokensSeeTheFixtureFlags` checks their variants; `integration.CreateFlag` can create scenario flags with variants; integration scenarios for every M6 criterion that needs Unleash (stickiness with `--user-id` and a custom property, weighted split, each payload type, disabled flag exit 6, fallbacks, metrics with the variant count); the README's gated `$GITHUB_ENV` example and stickiness guidance; `docs/agents/internals.md`.
 - Milestone criteria: fixtures, integration coverage, README.
 
@@ -98,5 +98,5 @@ Open questions from the spike, for the user before PR 2 and PR 3 (none affects P
 
 ### Close out
 
-- [ ] Before spec 0003 is set to `implemented`, settle the spike's open questions on its wording with the user. In particular, spec 0003's "Keep the variant sticky" still says default stickiness is `userId`, then `sessionId`, then random, while the README (PR 3) and the SDK put `remoteAddress` before random; amend the spec to match the README, or change the README if the user decides otherwise.
+- [x] Settle the spike's open questions on spec 0003's wording. Spec 0003's "Keep the variant sticky" now has the `remoteAddress` step and says the custom-stickiness context field is for the Unleash UI, and its "Unleash integration" bullet reads the stickiness the SDK hashes with; the milestone's risks name `variants-batch`.
 - [ ] Every M6 exit criterion holds. Set M6 to `done`, spec 0003 to `implemented`, and update this plan, internals.md and the README status.
