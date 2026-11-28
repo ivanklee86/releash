@@ -4,6 +4,7 @@ package integration
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -43,8 +44,9 @@ func CreateVariantFlag(t testing.TB, variants []Variant, strategies ...Strategy)
 
 	adminCall(t, http.MethodPost, "/api/admin/projects/default/features", map[string]string{"name": name, "type": "release"})
 	t.Cleanup(func() {
-		// Archive, the Admin API's DELETE, even when the test failed.
-		if err := adminRequest(http.MethodDelete, base, nil); err != nil {
+		// Archive, the Admin API's DELETE, even when the test failed. t.Context()
+		// is already cancelled when cleanups run.
+		if err := adminRequest(context.Background(), http.MethodDelete, base, nil); err != nil {
 			t.Errorf("archiving scenario flag %s: %v", name, err)
 		}
 	})
@@ -100,7 +102,7 @@ func waitForClientFlag(t testing.TB, token, name string, strategies, variants in
 	t.Helper()
 	deadline := time.Now().Add(15 * time.Second)
 	for {
-		ok, err := clientSeesFlag(token, name, strategies, variants)
+		ok, err := clientSeesFlag(t.Context(), token, name, strategies, variants)
 		if err == nil && ok {
 			return
 		}
@@ -111,8 +113,8 @@ func waitForClientFlag(t testing.TB, token, name string, strategies, variants in
 	}
 }
 
-func clientSeesFlag(token, name string, strategies, variants int) (bool, error) {
-	req, err := http.NewRequest(http.MethodGet, URL()+"/client/features", nil)
+func clientSeesFlag(ctx context.Context, token, name string, strategies, variants int) (bool, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, URL()+"/client/features", nil)
 	if err != nil {
 		return false, err
 	}
@@ -152,12 +154,12 @@ func clientSeesFlag(token, name string, strategies, variants int) (bool, error) 
 // server root, and fails the test unless the answer is 2xx.
 func adminCall(t testing.TB, method, path string, body any) {
 	t.Helper()
-	if err := adminRequest(method, path, body); err != nil {
+	if err := adminRequest(t.Context(), method, path, body); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func adminRequest(method, path string, body any) error {
+func adminRequest(ctx context.Context, method, path string, body any) error {
 	var r io.Reader
 	if body != nil {
 		data, err := json.Marshal(body)
@@ -166,7 +168,7 @@ func adminRequest(method, path string, body any) error {
 		}
 		r = bytes.NewReader(data)
 	}
-	req, err := http.NewRequest(method, serverRoot(URL())+path, r)
+	req, err := http.NewRequestWithContext(ctx, method, serverRoot(URL())+path, r)
 	if err != nil {
 		return err
 	}
@@ -205,7 +207,7 @@ func WaitForUsage(t testing.TB, flag, env, appName string) Usage {
 	t.Helper()
 	deadline := time.Now().Add(30 * time.Second)
 	for {
-		u, err := flagUsage(flag, env, appName)
+		u, err := flagUsage(t.Context(), flag, env, appName)
 		if err == nil && u.Yes+u.No > 0 {
 			return u
 		}
@@ -217,9 +219,9 @@ func WaitForUsage(t testing.TB, flag, env, appName string) Usage {
 }
 
 // flagUsage sums the hourly raw usage rows of flag for env and appName.
-func flagUsage(flag, env, appName string) (Usage, error) {
+func flagUsage(ctx context.Context, flag, env, appName string) (Usage, error) {
 	path := "/api/admin/client-metrics/features/" + url.PathEscape(flag) + "/raw"
-	req, err := http.NewRequest(http.MethodGet, serverRoot(URL())+path, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, serverRoot(URL())+path, nil)
 	if err != nil {
 		return Usage{}, err
 	}

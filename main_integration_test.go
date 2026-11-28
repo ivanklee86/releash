@@ -146,7 +146,7 @@ func TestPipelineEvalsTheShellFormat(t *testing.T) {
 	require.Equal(t, releash.ExitOK, code, "stderr: %s", stderr.String())
 
 	script := `vars=$1 && eval "$vars" && printf '%s|%s' "$RELEASH_VARIANT_STRING_PAYLOAD_VARIANT" "$RELEASH_VARIANT_STRING_PAYLOAD_PAYLOAD"`
-	out, err := exec.CommandContext(t.Context(), "/bin/sh", "-c", script, "sh", stdout.String()).Output()
+	out, err := exec.CommandContext(t.Context(), "/bin/sh", "-c", script, "sh", stdout.String()).Output() //nolint:gosec // G204: the test evals releash's shell output on purpose.
 	require.NoError(t, err)
 	assert.Equal(t, "blue|deploy blue", string(out))
 }

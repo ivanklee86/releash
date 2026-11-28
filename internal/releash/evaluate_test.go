@@ -273,7 +273,7 @@ func TestCheckFallsBackToFalse(t *testing.T) {
 }
 
 func TestCheckFallsBackWhenUnleashIsUnreachable(t *testing.T) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	ln, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	addr := ln.Addr().String()
 	require.NoError(t, ln.Close())
@@ -514,7 +514,7 @@ func TestOnErrorPassesOnOnlyFetchAndEvaluationErrorsBeforeReady(t *testing.T) {
 // connections and never answers.
 func unresponsiveServer(t *testing.T) string {
 	t.Helper()
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	ln, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	var mu sync.Mutex
 	var conns []net.Conn

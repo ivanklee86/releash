@@ -73,8 +73,10 @@ func TestUnresponsiveServerNeverAnswers(t *testing.T) {
 	url := integration.UnresponsiveServer(t)
 	client := &http.Client{Timeout: 200 * time.Millisecond}
 
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, url+"/api/client/features", nil)
+	require.NoError(t, err)
 	start := time.Now()
-	resp, err := client.Get(url + "/api/client/features")
+	resp, err := client.Do(req)
 	if resp != nil {
 		_ = resp.Body.Close()
 	}

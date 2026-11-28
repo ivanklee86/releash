@@ -106,7 +106,7 @@ func TestCheckUsesTheAddressOfTheRedirectTarget(t *testing.T) {
 // no IPv6 loopback, and fails it when the host cannot listen on IPv4.
 func serveOnLoopback(t *testing.T, handler http.HandlerFunc, addr string) string {
 	t.Helper()
-	ln, err := net.Listen("tcp", addr)
+	ln, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", addr)
 	if err != nil && strings.HasPrefix(addr, "[") {
 		t.Skipf("cannot listen on %s: %v", addr, err)
 	}

@@ -20,6 +20,17 @@ Observable, checkable conditions that must all hold before `status` moves to `do
 
 - ...
 
+## Complexity budget
+
+The most this milestone may add, stated before work starts. Going over it means revisiting the scope, not just the estimate.
+
+- New packages: ...
+- New exported identifiers: ...
+- New direct dependencies in `go.mod`: ...
+- Product (non-test) Go lines added, estimated: ...
+
+No function may exceed the `gocognit` threshold in `.golangci.yml`. Raising the threshold needs an ADR.
+
 ## Out of scope
 
 Explicit no-gos, deferred to a later milestone or dropped entirely.

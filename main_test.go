@@ -23,7 +23,7 @@ const (
 	loudLine  = "releash: flag \"x\" not found; returning false\n"
 	checkHelp = "Run 'releash check --help' for usage.\n"
 	noURL     = "releash: no Unleash URL: set UNLEASH_URL or --url to the Unleash API URL\n"
-	noToken   = "releash: no Unleash API token: set UNLEASH_API_TOKEN or --token to a client API token\n"
+	noToken   = "releash: no Unleash API token: set UNLEASH_API_TOKEN or --token to a client API token\n" //nolint:gosec // G101: an error message, not a credential.
 )
 
 // testURL is the API URL of a fake Unleash that TestMain starts, so valid
