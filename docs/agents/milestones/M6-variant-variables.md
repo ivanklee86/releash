@@ -1,5 +1,5 @@
 ---
-status: active  # planned | active | done | dropped
+status: done  # planned | active | done | dropped
 ---
 
 # M6: Variant variables
@@ -12,7 +12,7 @@ Pipelines can run `releash variant <flag>` after `releash check` and get the fla
 
 Specs (in `docs/specs`) delivered by this milestone. Check each off when it is implemented.
 
-- [ ] [0003-variant-variables](../../specs/0003-variant-variables.md)
+- [x] [0003-variant-variables](../../specs/0003-variant-variables.md)
 
 ## Exit criteria
 
@@ -33,7 +33,7 @@ Specs (in `docs/specs`) delivered by this milestone. Check each off when it is i
 - `unleash/fixtures.json` and `unleash/seed.py` gain flags with `json`, `string`, `number` and `csv` payloads, a weighted split, custom stickiness and a disabled flag with variants, and `TestClientTokensSeeTheFixtureFlags` checks their variants. `integration.CreateVariantFlag` can create scenario flags with variants for cases the fixtures cannot hold.
 - Integration tests cover every criterion above that needs Unleash, locally and in CI.
 - The README has a pipeline example that gates with `check` and loads the variant into `$GITHUB_ENV`, and documents passing the repository as `--user-id` or a custom property for stickiness, with the variables for each CI system listed in spec 0003.
-- `variant` is released in `v0.2.0` through the release workflow, which passes every step, and `v0.2.0` verifies with the commands in spec 0002. Its pull requests carry the `enhancement` label, so the release notes list it under Features.
+- `variant` is released in `v0.2.0` through the release workflow, which passes every step, and `v0.2.0` verifies with the commands in spec 0002. Its pull requests carry the `enhancement` label, so the release notes list it under Features. `v0.2.0` was tagged on `aaefe7a` on 2026-11-28: every step of the run passed, spec 0002's commands verified the binary, the image index and both platform images, and the notes list #27, #28 and #29 under Features, below a hand-written summary of the command.
 - Spec 0003 moves to `implemented`.
 
 ## Out of scope

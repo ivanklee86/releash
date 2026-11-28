@@ -1,6 +1,6 @@
 - Feature Name: `variant_command`
 - Start Date: 2026-11-27
-- Status: accepted
+- Status: implemented
 - Related ADRs: [0001](../adrs/0001-read-only-by-design.md), [0002](../adrs/0002-client-api-over-frontend-api.md), [0003](../adrs/0003-fail-safe-false.md), [0004](../adrs/0004-exit-code-contract.md), [0006](../adrs/0006-variant-variable-names.md), [0007](../adrs/0007-refuse-variant-of-disabled-flag.md)
 
 # Summary
