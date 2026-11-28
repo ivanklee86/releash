@@ -31,6 +31,35 @@ type Flag struct {
 	// Strategies are the activation strategies the seed adds to the flag in
 	// every environment.
 	Strategies []Strategy `json:"strategies"`
+	// Variants are the feature variants the seed gives the flag in every
+	// environment, with their weights as Unleash stores them.
+	Variants []Variant `json:"variants,omitempty"`
+}
+
+// Variant is one variant of a flag, either a feature variant or a strategy
+// variant, in the shape both the Admin API and the Client API use.
+type Variant struct {
+	// Name is the variant name that releash variant prints as VARIANT.
+	Name string `json:"name"`
+	// Weight is the variant's share of 1000. Unleash recomputes the weights
+	// of "variable" variants as an even split of what the "fix" ones leave.
+	Weight int `json:"weight"`
+	// WeightType is "variable" or "fix".
+	WeightType string `json:"weightType,omitempty"`
+	// Stickiness is the context field that assigns the variant, or "default".
+	// The Admin API requires it on strategy variants.
+	Stickiness string `json:"stickiness,omitempty"`
+	// Payload is the variant's payload, or nil for none.
+	Payload *Payload `json:"payload,omitempty"`
+}
+
+// Payload is a variant payload. Unleash sends every value as a string, also
+// for the json, number and csv types.
+type Payload struct {
+	// Type is json, string, number or csv.
+	Type string `json:"type"`
+	// Value is the payload as Unleash stores it.
+	Value string `json:"value"`
 }
 
 // Strategy is one activation strategy of a fixture flag, in the shape both
@@ -45,6 +74,9 @@ type Strategy struct {
 	Constraints []Constraint `json:"constraints,omitempty"`
 	// Disabled is true for a strategy that is switched off and never applies.
 	Disabled bool `json:"disabled,omitempty"`
+	// Variants are the strategy's variants, which win over the flag's
+	// feature variants when the strategy applies.
+	Variants []Variant `json:"variants,omitempty"`
 }
 
 // Constraint is one constraint of a strategy.

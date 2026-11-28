@@ -5,6 +5,11 @@
       "name": "region",
       "description": "Deployment region, used by region-gated rollouts.",
       "legalValues": ["eu", "us"]
+    },
+    {
+      "name": "repo",
+      "description": "Repository or pipeline name, the custom stickiness of variant-custom-stickiness.",
+      "stickiness": true
     }
   ],
   "flags": [
@@ -110,6 +115,88 @@
       "enabled": {"development": true, "production": true},
       "strategies": [
         {"name": "remoteAddress", "parameters": {"IPs": "127.0.0.1, ::1, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10, fc00::/7"}}
+      ]
+    },
+    {
+      "name": "variant-json-payload",
+      "description": "One variant, treatment, with the nested json payload of spec 0003's example.",
+      "enabled": {"development": true, "production": true},
+      "strategies": [
+        {"name": "flexibleRollout", "parameters": {"rollout": "100", "stickiness": "default", "groupId": "variant-json-payload"}}
+      ],
+      "variants": [
+        {
+          "name": "treatment", "weight": 1000, "weightType": "variable", "stickiness": "default",
+          "payload": {"type": "json", "value": "{\"image\": {\"tag\": \"v2\"}, \"replicas\": 3, \"regions\": [\"eu\", \"us\"]}"}
+        }
+      ]
+    },
+    {
+      "name": "variant-string-payload",
+      "description": "One variant, blue, with a string payload.",
+      "enabled": {"development": true, "production": true},
+      "strategies": [
+        {"name": "flexibleRollout", "parameters": {"rollout": "100", "stickiness": "default", "groupId": "variant-string-payload"}}
+      ],
+      "variants": [
+        {"name": "blue", "weight": 1000, "weightType": "variable", "stickiness": "default", "payload": {"type": "string", "value": "deploy blue"}}
+      ]
+    },
+    {
+      "name": "variant-number-payload",
+      "description": "One variant, ratio, with a number payload whose text must be kept as written.",
+      "enabled": {"development": true, "production": true},
+      "strategies": [
+        {"name": "flexibleRollout", "parameters": {"rollout": "100", "stickiness": "default", "groupId": "variant-number-payload"}}
+      ],
+      "variants": [
+        {"name": "ratio", "weight": 1000, "weightType": "variable", "stickiness": "default", "payload": {"type": "number", "value": "1.50"}}
+      ]
+    },
+    {
+      "name": "variant-csv-payload",
+      "description": "One variant, regions, with a csv payload.",
+      "enabled": {"development": true, "production": true},
+      "strategies": [
+        {"name": "flexibleRollout", "parameters": {"rollout": "100", "stickiness": "default", "groupId": "variant-csv-payload"}}
+      ],
+      "variants": [
+        {"name": "regions", "weight": 1000, "weightType": "variable", "stickiness": "default", "payload": {"type": "csv", "value": "eu,us"}}
+      ]
+    },
+    {
+      "name": "variant-weighted-split",
+      "description": "Two variants split 50/50 by default stickiness: control without a payload, treatment with a string payload.",
+      "enabled": {"development": true, "production": true},
+      "strategies": [
+        {"name": "flexibleRollout", "parameters": {"rollout": "100", "stickiness": "default", "groupId": "variant-weighted-split"}}
+      ],
+      "variants": [
+        {"name": "control", "weight": 500, "weightType": "variable", "stickiness": "default"},
+        {"name": "treatment", "weight": 500, "weightType": "variable", "stickiness": "default", "payload": {"type": "string", "value": "v2"}}
+      ]
+    },
+    {
+      "name": "variant-custom-stickiness",
+      "description": "Two variants split 50/50 by the custom property repo.",
+      "enabled": {"development": true, "production": true},
+      "strategies": [
+        {"name": "flexibleRollout", "parameters": {"rollout": "100", "stickiness": "default", "groupId": "variant-custom-stickiness"}}
+      ],
+      "variants": [
+        {"name": "a", "weight": 500, "weightType": "variable", "stickiness": "repo"},
+        {"name": "b", "weight": 500, "weightType": "variable", "stickiness": "repo"}
+      ]
+    },
+    {
+      "name": "variant-disabled-everywhere",
+      "description": "Has a variant with a payload but is turned off in every environment.",
+      "enabled": {"development": false, "production": false},
+      "strategies": [
+        {"name": "flexibleRollout", "parameters": {"rollout": "100", "stickiness": "default", "groupId": "variant-disabled-everywhere"}}
+      ],
+      "variants": [
+        {"name": "treatment", "weight": 1000, "weightType": "variable", "stickiness": "default", "payload": {"type": "string", "value": "v2"}}
       ]
     }
   ]

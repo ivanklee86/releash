@@ -6,14 +6,18 @@ package main
 // and environment variables reach evaluation. They run against the local
 // stack (task services), and the helpers are in internal/integration. The
 // release scenarios themselves are in internal/releash. The command contract
-// (exit codes 2 to 5, defaults, environment fallback) needs no stack and is
-// covered by the unit tests in check_test.go.
+// (exit codes 2 to 5, defaults, environment fallback, the raw-argument scan)
+// needs no stack and is covered by the unit tests in check_test.go and
+// variant_test.go.
 
 import (
 	"bytes"
+	"os/exec"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/ivanklee86/releash/internal/integration"
 	"github.com/ivanklee86/releash/internal/releash"
@@ -97,4 +101,68 @@ func TestPipelinePropertyValueKeepsEqualsSign(t *testing.T) {
 	pipeline(t, "false\n", "check", isAB, "--properties", "build=a")
 	pipeline(t, "true\n", "check", notA, "--properties", "build=")
 	pipeline(t, "false\n", "check", notA, "--properties", "build=a")
+}
+
+// The README's GitHub Actions example: gate on check, then load the variant
+// for $GITHUB_ENV, passing both the same --user-id. The two repositories get
+// different variants of the weighted split, so the variant shows that
+// --user-id reaches its evaluation.
+func TestPipelineGatesThenLoadsTheVariant(t *testing.T) {
+	integration.RequireUnleash(t)
+
+	for repo, want := range map[string]string{
+		"repo-0": "RELEASH_VARIANT_WEIGHTED_SPLIT_ENABLED=true\nRELEASH_VARIANT_WEIGHTED_SPLIT_VARIANT=control\n",
+		"repo-2": "RELEASH_VARIANT_WEIGHTED_SPLIT_ENABLED=true\nRELEASH_VARIANT_WEIGHTED_SPLIT_VARIANT=treatment\nRELEASH_VARIANT_WEIGHTED_SPLIT_PAYLOAD=v2\n",
+	} {
+		pipeline(t, "true\n", "check", "variant-weighted-split", "--user-id", repo)
+		pipeline(t, want, "variant", "variant-weighted-split", "--user-id", repo)
+	}
+}
+
+// The README's custom stickiness: --properties picks the variant of a flag
+// whose variants stick to the repo property.
+func TestPipelinePropertiesPickTheVariant(t *testing.T) {
+	integration.RequireUnleash(t)
+
+	for repo, variant := range map[string]string{"org/repo-0": "a", "ivanklee86/releash": "b"} {
+		want := strings.Join([]string{
+			"RELEASH_VARIANT_CUSTOM_STICKINESS_ENABLED=true",
+			"RELEASH_VARIANT_CUSTOM_STICKINESS_VARIANT=" + variant,
+		}, "\n") + "\n"
+		pipeline(t, want, "variant", "variant-custom-stickiness", "--properties", "repo="+repo)
+	}
+}
+
+// The README's shell example: capture the shell format first, then eval it,
+// so later commands read the payload.
+func TestPipelineEvalsTheShellFormat(t *testing.T) {
+	integration.RequireUnleash(t)
+	unleashEnv(t, map[string]string{
+		"UNLEASH_URL":       integration.URL(),
+		"UNLEASH_API_TOKEN": integration.ClientToken(t, integration.Production),
+	})
+	var stdout, stderr bytes.Buffer
+
+	code := execute([]string{"variant", "variant-string-payload", "--user-id", "ivanklee86/releash", "--format", "shell"}, &stdout, &stderr, "dev")
+	require.Equal(t, releash.ExitOK, code, "stderr: %s", stderr.String())
+
+	script := `vars=$1 && eval "$vars" && printf '%s|%s' "$RELEASH_VARIANT_STRING_PAYLOAD_VARIANT" "$RELEASH_VARIANT_STRING_PAYLOAD_PAYLOAD"`
+	out, err := exec.CommandContext(t.Context(), "/bin/sh", "-c", script, "sh", stdout.String()).Output()
+	require.NoError(t, err)
+	assert.Equal(t, "blue|deploy blue", string(out))
+}
+
+func TestPipelineVariantOfDisabledFlagFailsTheStep(t *testing.T) {
+	integration.RequireUnleash(t)
+	unleashEnv(t, map[string]string{
+		"UNLEASH_URL":       integration.URL(),
+		"UNLEASH_API_TOKEN": integration.ClientToken(t, integration.Production),
+	})
+	var stdout, stderr bytes.Buffer
+
+	code := execute([]string{"variant", "variant-disabled-everywhere", "--format", "shell"}, &stdout, &stderr, "dev")
+
+	assert.Equal(t, "export RELEASH_VARIANT_DISABLED_EVERYWHERE_ENABLED='false'\nexport RELEASH_VARIANT_DISABLED_EVERYWHERE_VARIANT='disabled'\n", stdout.String())
+	assert.Equal(t, `releash: flag "variant-disabled-everywhere" is disabled; gate on "releash check variant-disabled-everywhere" before loading its variant`+"\n", stderr.String())
+	assert.Equal(t, releash.ExitDisabled, code)
 }

@@ -23,6 +23,7 @@ type clientFeatures struct {
 		Project    string                 `json:"project"`
 		Enabled    bool                   `json:"enabled"`
 		Strategies []integration.Strategy `json:"strategies"`
+		Variants   []integration.Variant  `json:"variants"`
 	} `json:"features"`
 }
 
@@ -30,8 +31,9 @@ type clientFeatures struct {
 // unleash/fixtures.json says: each client token sees every fixture flag and no
 // other flag apart from scenario flags (integration.ScenarioFlagPrefix), each
 // flag is switched on or off as the fixture says for that token's environment,
-// and its strategies have the fixture's names, parameters and constraints. The
-// release scenarios in M3 and M4 rely on this.
+// its strategies have the fixture's names, parameters, constraints and
+// variants, and its feature variants are the fixture's, payloads and weights
+// included. The release scenarios rely on this.
 func TestClientTokensSeeTheFixtureFlags(t *testing.T) {
 	integration.RequireUnleash(t)
 	fixtures := integration.LoadFixtures(t)
@@ -57,6 +59,7 @@ func TestClientTokensSeeTheFixtureFlags(t *testing.T) {
 				f := got.Features[i]
 				assert.Equal(t, flag.EnabledIn(env), f.Enabled, "flag %q enabled in %s", flag.Name, env)
 				assert.ElementsMatch(t, normalize(flag.Strategies), normalize(f.Strategies), "strategies of flag %q in %s", flag.Name, env)
+				assert.ElementsMatch(t, normalizeVariants(flag.Variants), normalizeVariants(f.Variants), "variants of flag %q in %s", flag.Name, env)
 			}
 			assert.Len(t, byName, len(fixtures.Flags), "the %s token sees flags that are neither fixtures nor scenario flags", env)
 		})
@@ -100,7 +103,25 @@ func normalize(strategies []integration.Strategy) []integration.Strategy {
 		if len(constraints) > 0 {
 			s.Constraints = constraints
 		}
+		s.Variants = normalizeVariants(s.Variants)
 		out = append(out, s)
+	}
+	return out
+}
+
+// normalizeVariants fills in the stickiness Unleash stores for a variant
+// without one and drops an empty list, so fixture and Client API variants
+// compare equal when they mean the same.
+func normalizeVariants(variants []integration.Variant) []integration.Variant {
+	if len(variants) == 0 {
+		return nil
+	}
+	out := make([]integration.Variant, 0, len(variants))
+	for _, v := range variants {
+		if v.Stickiness == "" {
+			v.Stickiness = "default"
+		}
+		out = append(out, v)
 	}
 	return out
 }

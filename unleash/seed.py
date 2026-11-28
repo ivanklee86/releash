@@ -91,6 +91,24 @@ def normalize_strategy(s):
     )
 
 
+def normalize_variants(variants):
+    """Reduces feature variants to the fields the fixtures set, sorted by name with the server's defaults filled in,
+    for comparison. Unleash serves them sorted by name and stores an omitted stickiness as default."""
+    out = []
+    for v in variants or []:
+        payload = v.get("payload")
+        out.append(
+            (
+                v["name"],
+                int(v.get("weight", 0)),
+                v.get("weightType", "variable"),
+                v.get("stickiness") or "default",
+                None if payload is None else (str(payload.get("type", "")), str(payload.get("value", ""))),
+            )
+        )
+    return sorted(out)
+
+
 def is_archived_name_conflict(e):
     """Reports whether e is Unleash 8.3.1 refusing to create a flag because an archived flag has its name."""
     if e.status != 409:
@@ -103,22 +121,25 @@ def is_archived_name_conflict(e):
 
 
 def seed_context_field(field):
-    """Creates the custom context field, or updates its description and legal values to match. Raises APIError."""
+    """Creates the custom context field, or updates its description, legal values and stickiness to match. Raises
+    APIError."""
     name = field["name"]
     body = {
         "name": name,
         "description": field.get("description", ""),
         "legalValues": [{"value": v} for v in field.get("legalValues", [])],
-        "stickiness": False,
+        "stickiness": bool(field.get("stickiness", False)),
     }
     current = api("GET", f"/api/admin/context/{quote(name)}", missing_ok=True)
     if current is None:
         api("POST", "/api/admin/context", body)
         print(f"context field {name}: created")
         return
-    same = current.get("description", "") == body["description"] and sorted(
-        v["value"] for v in current.get("legalValues", [])
-    ) == sorted(field.get("legalValues", []))
+    same = (
+        current.get("description", "") == body["description"]
+        and sorted(v["value"] for v in current.get("legalValues", [])) == sorted(field.get("legalValues", []))
+        and bool(current.get("stickiness", False)) == body["stickiness"]
+    )
     if same:
         print(f"context field {name}: unchanged")
         return
@@ -126,9 +147,26 @@ def seed_context_field(field):
     print(f"context field {name}: updated")
 
 
+def seed_variants(base, env, variants):
+    """Replaces the feature variants of the flag at base in env when they differ from variants, and returns whether it
+    did. Raises APIError, also when Unleash stores something other than variants, e.g. because their variable weights
+    are not the even split of 1000 that Unleash computes, which would make every run rewrite them."""
+    path = f"{base}/environments/{quote(env)}/variants"
+    desired = normalize_variants(variants)
+    if normalize_variants(api("GET", path).get("variants")) == desired:
+        return False
+    # The per-environment PUT is refused with 403 on a flag that has no feature variants yet ("Environment variants
+    # deprecated"), while variants-batch works on any flag and replaces the variants of the environments it names.
+    api("PUT", f"{base}/variants-batch", {"variants": variants, "environments": [env]})
+    stored = normalize_variants(api("GET", path).get("variants"))
+    if stored != desired:
+        raise APIError(f"{path}: Unleash stored {stored}, not the fixture's {desired}; give weights as Unleash stores them")
+    return True
+
+
 def seed_flag(project, flag):
-    """Makes the flag in project match the fixture: creates or revives it, replaces strategies that differ, and turns
-    each listed environment on or off. Raises APIError, also when a listed environment does not exist."""
+    """Makes the flag in project match the fixture: creates or revives it, replaces strategies and feature variants
+    that differ, and turns each listed environment on or off. Raises APIError, also when a listed environment does not exist."""
     name = flag["name"]
     base = f"/api/admin/projects/{quote(project)}/features/{quote(name)}"
     changes = []
@@ -170,6 +208,8 @@ def seed_flag(project, flag):
             for s in strategies:
                 api("DELETE", f"{base}/environments/{quote(env)}/strategies/{quote(s['id'])}")
             changes.append(f"{env} strategies")
+        if seed_variants(base, env, flag.get("variants", [])):
+            changes.append(f"{env} variants")
         if bool(envs[env].get("enabled")) != enabled:
             api("POST", f"{base}/environments/{quote(env)}/{'on' if enabled else 'off'}")
             changes.append(f"{env} {'on' if enabled else 'off'}")
