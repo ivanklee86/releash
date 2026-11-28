@@ -1,7 +1,7 @@
 - Feature Name: `variant_command`
 - Start Date: 2026-11-27
 - Status: implemented
-- Related ADRs: [0001](../adrs/0001-read-only-by-design.md), [0002](../adrs/0002-client-api-over-frontend-api.md), [0003](../adrs/0003-fail-safe-false.md), [0004](../adrs/0004-exit-code-contract.md), [0006](../adrs/0006-variant-variable-names.md), [0007](../adrs/0007-refuse-variant-of-disabled-flag.md)
+- Related ADRs: [0001](../adrs/0001-read-only-by-design.md), [0002](../adrs/0002-client-api-over-frontend-api.md), [0003](../adrs/0003-fail-safe-false.md), [0004](../adrs/0004-exit-code-contract.md), [0006](../adrs/0006-variant-variable-names.md), [0007](../adrs/0007-refuse-variant-of-disabled-flag.md), [0008](../adrs/0008-leave-command-line-parsing-to-cobra.md)
 
 # Summary
 
@@ -157,7 +157,7 @@ releash variant <flag> [--url <url>] [--token <token>] [--timeout <duration>] [-
                        [--properties <name>=<value>]...
 ```
 
-The connection options, the context options and their defaults, validation, automatic values (including the automatic `remoteAddress`) and configuration are exactly those of spec 0001 and share its implementation. `variant` adds two releash options, `--format` and `--prefix`. `--help` lists them with the other releash options, under the same three headings as `check`: "Releash options", "Context options" and "Other options" (`--help`, `--version`). As with `check`, an option given before the command, e.g. `releash --loud variant x`, is a bad command line and exits 2; `--help`, `-h`, `--version` and `-v` are the exceptions.
+The connection options, the context options and their defaults, validation, automatic values (including the automatic `remoteAddress`) and configuration are exactly those of spec 0001 and share its implementation. `variant` adds two releash options, `--format` and `--prefix`. `--help` lists them with the other releash options, under the same three headings as `check`: "Releash options", "Context options" and "Other options" (`--help`, `--version`). As with `check`, options may also go before the command name: `releash --format shell variant x` is the same as `releash variant x --format shell`.
 
 ## Variables
 
@@ -222,24 +222,11 @@ CI systems can limit how many variables or how many bytes a dotenv file or env f
 
 ## Output and exit codes
 
-The exit codes and their meanings are those of spec 0001 and [ADR 0004](../adrs/0004-exit-code-contract.md), plus exit 6. For every exit that releash controls, stdout is the variant output in the requested format and nothing else. On exit 0 it is the evaluated variant or the fallback; on any other exit it is the fallback. As in spec 0001, `--help` and `--version` are informational, and a panic that releash recovers prints the fallback and exits 1.
-
-A command line that fails to parse can stop before `--format` is read, so the format for stdout is taken from the raw arguments before they are parsed, the way releash already finds options given before the command. The scan reads the arguments as the option parser does: an option that takes a value (every option but `--loud`, `--help` and `--version`) consumes the next argument when it is written without `=`, even if that argument starts with `-`, so `--user-id --format` sets the user ID to `--format` and is not a `--format`. Arguments after `--` are not options and are not scanned.
-
-- No `--format`: `dotenv`.
-- Every `--format` (as `--format <value>` or `--format=<value>`) names the same valid format: that format. Given twice with the same value is still exit 2, but stdout uses it.
-- An invalid value, `--format` with no value, or two different values: empty stdout and exit 2, because there is no single format to print the fallback in.
-
-The fallback's variable names need a prefix too, and the same scan finds it:
-
-- Every `--prefix` names the same valid prefix: that prefix. Given twice with the same value is still exit 2, but stdout uses it.
-- No `--prefix` and exactly one flag name among the arguments: the default prefix derived from that flag name.
-- Otherwise, such as an invalid `--prefix`, two different prefixes, or no `--prefix` with a missing or extra flag name: empty stdout, because there is no prefix to name the variables with. The exit code is the command line error's, as usual.
-
-So a recovered panic and an option given before `variant` still print the fallback, as long as the scan finds a format and a prefix.
+The exit codes and their meanings are those of spec 0001 and [ADR 0004](../adrs/0004-exit-code-contract.md), plus exit 6. For every exit that releash controls, stdout is the variant output in the requested format and nothing else. On exit 0 it is the evaluated variant or the fallback. On exit 2, a bad command line, stdout is empty ([ADR 0008](../adrs/0008-leave-command-line-parsing-to-cobra.md)): the command line may not say which format and prefix to print in, and a pipeline that gets its command line wrong should fail rather than load defaults. On every other exit it is the fallback, in the format and with the prefix that were given, which validation has already accepted by then. As in spec 0001, `--help` and `--version` are informational, and a panic that releash recovers prints the fallback and exits 1, or prints nothing if the options it parsed give no single valid format and prefix, or if it panicked before parsing them.
 
 | Exit | Meaning | stdout | stderr |
 |---|---|---|---|
+| 2 | Bad command line: the cases of spec 0001 and those below | nothing | error message |
 | 6 | The flag was evaluated and is disabled for the context | the fallback | error message naming `releash check` |
 
 Exit 6 is a mistake in the pipeline, not in the command line, so it ranks after codes 1–5: when the command line is also wrong, the lower code wins and the flag is never evaluated. It is new to [ADR 0004](../adrs/0004-exit-code-contract.md) and applies only to `variant`; `check` never exits 6.
@@ -275,22 +262,23 @@ A fallback exits 0 even when it happens after `check` answered `true`, e.g. beca
 
 - Happy path: a flag with a `json` payload prints the variables in the documented order and format; `string`, `number` and `csv` payloads print only `PAYLOAD`; a variant without a payload prints only `ENABLED` and `VARIANT`.
 - Answers without a variant: an enabled flag without variants prints `ENABLED=true` and `VARIANT=disabled`, exits 0 and is silent with `--loud`.
-- Disabled flag: prints `ENABLED=false` and `VARIANT=disabled` in the requested format, writes the error naming `releash check` to stderr without `--loud`, and exits 6. A disabled flag combined with a command line error exits with the command line error's code.
+- Disabled flag: prints `ENABLED=false` and `VARIANT=disabled` in the requested format, writes the error naming `releash check` to stderr without `--loud`, and exits 6. A disabled flag combined with a command line error exits with the command line error's code, with empty stdout when that is 2.
 - Flattening: nested objects, arrays, arrays of objects, `null`, booleans, empty objects and arrays, a scalar root, number text preserved (`1.0`, `12345678901234567890`), and member names with `-`, `.`, spaces and non-ASCII characters.
 - Collisions: names that normalise to the same variable, `__` in a member name that collides with nesting, and duplicate member names each fall back with their own `--loud` line.
 - Formats: a value with `'`, `$`, `` ` ``, `\` and spaces survives `eval` of `--format shell` unchanged; a value with a newline falls back in `dotenv` and is preserved in `shell`.
 - Prefix: the default prefix normalises the flag name; `--prefix` replaces it; an empty, lower-case or otherwise invalid prefix exits 2.
 - Stickiness: with `--user-id` fixed, repeated runs get the same variant; with a custom stickiness property, each value maps to the same variant every time; `--loud` warns when the flag uses default stickiness and neither `--user-id` nor `--session-id` is set.
 - Fallback: every fallback case of spec 0001, invalid JSON in a `json` payload, and each unrepresentable value print the disabled variant, exit 0, are silent without `--loud`, and finish within `--timeout`.
-- Command and configuration errors: each exit code of spec 0001 prints the fallback in the requested format; an invalid `--format` exits 2 with empty stdout. An option given before `variant` exits 2. A recovered panic prints the fallback and exits 1.
-- The `--format` pre-scan: an unknown option before `--format shell` and one after it both print the fallback as `export` lines; `--format` given twice with the same value exits 2 in that format; two different values, an invalid value and a trailing `--format` exit 2 with empty stdout; `--format` after `--` is not read; `--user-id --format` is a user ID, not a format.
-- The prefix scan: a command line error with a valid `--prefix` prints the fallback under that prefix; with no `--prefix` and one flag name, under the default prefix; an invalid `--prefix`, two different prefixes, a missing flag name and two flag names each exit with their code and empty stdout.
+- Command and configuration errors: exits 3, 4 and 5 print the fallback in the requested format and with the requested prefix. Exit 2 prints nothing, whether cobra or validation finds the problem: an unknown option with a valid `--format`, a trailing `--format`, `--format` or `--prefix` given twice with the same value, a missing or extra flag name with a valid `--prefix`, and an invalid `--timeout`. A recovered panic prints the fallback in the parsed format and prefix and exits 1, or prints nothing when they are invalid.
+- Option placement: shared options and `--format` before `variant` work as they do after it; an option that takes `variant` or `check` as its value does not change the command; an unknown option before `variant` exits 2 with empty stdout.
 - Unknown and disabled flags: an unknown flag prints the disabled variant and exits 0 with the not-found `--loud` line; a disabled flag exits 6; a flag the SDK cannot evaluate falls back with exit 0.
 - Metrics: a successful variant evaluation sends metrics, including the variant count, before exit; a fallback and exit 6 do not wait for metrics.
 
 ## Versioning
 
 `variant` is a new command, so under [spec 0002](0002-distribution.md) it ships in a minor release (the first after `v0.1.2` is `v0.2.0`), and its pull requests carry the `enhancement` label. From that release, the variable names, their order, the formats and exit 6 are public contract: changing the naming rules in [ADR 0006](../adrs/0006-variant-variable-names.md) is a breaking change.
+
+`v0.3.0` changes stdout on exit 2 from the disabled variant to nothing ([ADR 0008](../adrs/0008-leave-command-line-parsing-to-cobra.md)). That is a breaking change, so it ships in a minor release with the `breaking-change` label.
 
 # Drawbacks
 
@@ -315,6 +303,7 @@ A fallback exits 0 even when it happens after `check` answered `true`, e.g. beca
 - **Falling back on collisions and unrepresentable values instead of dropping or escaping them.** A partially applied payload is a configuration nobody wrote. Falling back to the disabled variant sends the pipeline to its defaults, which is the same safe outcome as spec 0001's `false`.
 - **A required, validated prefix and a fixed `PAYLOAD__` segment.** Without them, a payload key such as `path` or `ld_preload` would set `PATH` or `LD_PRELOAD` for every later step, letting anyone who can edit the flag run code in the pipeline. Because every payload variable starts with `<prefix>PAYLOAD__`, no payload can choose a name outside that namespace. The default prefix is derived from the flag name, so flags with different names normally write different variables; flags whose names differ only in case or punctuation need `--prefix` (see [Variables](#variables)).
 - **`dotenv` as the default format.** It is accepted as-is by GitHub Actions, GitLab and Docker, and appending it to a file never executes anything. `shell` is opt-in because `eval` of remote data is only safe with exact quoting.
+- **Empty stdout on exit 2 instead of the disabled variant.** Up to `v0.2.0`, releash re-read the raw arguments of a command line that failed to parse to find the format and prefix of the fallback. That scan duplicated the option parser's rules and could drift from them, and it served command lines that fail the step anyway. Exits 3 to 5 come after a successful parse, so they keep printing the fallback ([ADR 0008](../adrs/0008-leave-command-line-parsing-to-cobra.md)).
 
 # Prior art
 

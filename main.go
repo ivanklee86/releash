@@ -8,7 +8,6 @@ import (
 	"io"
 	"os"
 	"runtime/debug"
-	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -26,9 +25,9 @@ var version string
 // UNLEASH_API_TOKEN) rather than a common prefix, so each flag names its own.
 const envAnnotation = "releash_env"
 
-// answerAnnotation marks a command whose stdout always holds an answer
-// (ADR 0004), so run prints the fallback answer for errors and panics in it.
-// Its value says which kind of answer: booleanAnswer or variantAnswer.
+// answerAnnotation marks a command whose stdout holds an answer (ADR 0004),
+// so run prints the fallback answer for errors and panics in it. Its value
+// says which kind of answer: booleanAnswer or variantAnswer.
 const answerAnnotation = "releash_answer"
 
 // The values of answerAnnotation.
@@ -36,7 +35,7 @@ const (
 	// booleanAnswer is check's answer: exactly "true\n" or "false\n".
 	booleanAnswer = "boolean"
 	// variantAnswer is variant's answer: the variables of spec 0003, with the
-	// disabled variant as the fallback (see variantFallback).
+	// disabled variant as the fallback, or nothing on exit 2 (see fallbackAnswer).
 	variantAnswer = "variant"
 )
 
@@ -81,18 +80,17 @@ func (e exitCodeError) Error() string {
 
 // run executes root with args and returns its exit code. It is the only place
 // that turns cobra errors and panics into exit codes: errors from parsing the
-// command line exit 2, as does an option given before the check or variant
-// command (see optionBeforeCommand), and a panic in a command is reported on
-// stderr and exits 1 (ADR 0004), rather than Go's default of 2, which would
-// look like a bad command line. For a command with answerAnnotation, both
-// also print the command's fallback answer on stdout (see fallbackAnswer).
+// command line exit 2, and a panic in a command is reported on stderr and
+// exits 1 (ADR 0004), rather than Go's default of 2, which would look like a
+// bad command line. For a command with answerAnnotation, both also print the
+// command's fallback answer on stdout (see fallbackAnswer).
 func run(root *cobra.Command, args []string, stdout, stderr io.Writer) (code int) {
 	defer func() {
 		if p := recover(); p != nil {
 			code = releash.ExitInternal
 			// ExecuteC never returned, so look the command up the way it does.
 			if c, _, err := root.Find(args); err == nil {
-				if answer, ok := fallbackAnswer(c, args); ok {
+				if answer, ok := fallbackAnswer(c, code); ok {
 					_, _ = fmt.Fprintf(stderr, "releash: internal error: %v\n", p)
 					_, _ = io.WriteString(stdout, answer)
 					return
@@ -101,15 +99,6 @@ func run(root *cobra.Command, args []string, stdout, stderr io.Writer) (code int
 			_, _ = fmt.Fprintf(stderr, "Error: internal error: %v\n", p)
 		}
 	}()
-
-	if name, opt, ok := optionBeforeCommand(root, args); ok {
-		_, _ = fmt.Fprintf(stderr, "releash: %s given before %s; put options after '%s <flag>'\nRun 'releash %s --help' for usage.\n", opt, name, name, name)
-		if c, _, err := root.Find([]string{name}); err == nil {
-			answer, _ := fallbackAnswer(c, args)
-			_, _ = io.WriteString(stdout, answer)
-		}
-		return releash.ExitUsage
-	}
 
 	root.SetArgs(args)
 	cmd, err := root.ExecuteC()
@@ -120,8 +109,18 @@ func run(root *cobra.Command, args []string, stdout, stderr io.Writer) (code int
 		return int(exit)
 	}
 	// Every other error comes from cobra parsing the command line.
-	if answer, ok := fallbackAnswer(cmd, args); ok {
-		_, _ = fmt.Fprintf(stderr, "releash: %v\nRun '%s --help' for usage.\n", err, cmd.CommandPath())
+	hint := ""
+	if cmd == root {
+		var i int
+		cmd, i = answerCommandIn(root, args)
+		// cobra's error names the argument after the command, not the
+		// option before it that took the command name as its value.
+		if i > 0 && strings.HasPrefix(args[i-1], "-") && strings.HasPrefix(err.Error(), "unknown command") {
+			hint = fmt.Sprintf("releash: %s may be missing its value and have taken %q instead\n", args[i-1], args[i])
+		}
+	}
+	if answer, ok := fallbackAnswer(cmd, releash.ExitUsage); ok {
+		_, _ = fmt.Fprintf(stderr, "releash: %v\n%sRun '%s --help' for usage.\n", err, hint, cmd.CommandPath())
 		_, _ = io.WriteString(stdout, answer)
 		return releash.ExitUsage
 	}
@@ -129,96 +128,32 @@ func run(root *cobra.Command, args []string, stdout, stderr io.Writer) (code int
 	return releash.ExitUsage
 }
 
-// answerCommands are the commands that carry answerAnnotation, which
-// optionBeforeCommand looks for.
-var answerCommands = []string{"check", "variant"}
-
-// optionBeforeCommand returns the name of the check or variant command in
-// args and the first option that comes before it, other than --help, -h,
-// --version and -v (also written as --help=... or --version=...). The root
-// command has no other options, and cobra's lookup of the subcommand guesses
-// whether an unknown option takes a value, so without this some such
-// invocations would run the command and others would fail on the root command
-// with empty stdout.
-//
-// The command is the first "check" or "variant" in args that is not the value
-// of an option: an option that takes a value in check or variant consumes the
-// next argument when it is written without "=", as it does for cobra. If every
-// command name was consumed that way, as in "--token check x" with an empty
-// $TOKEN, the first one consumed is the command, so the answer is still
-// printed although cobra would fail on the root command.
-func optionBeforeCommand(root *cobra.Command, args []string) (name, option string, ok bool) {
-	var sets []*pflag.FlagSet
-	for _, n := range answerCommands {
-		if c, _, err := root.Find([]string{n}); err == nil && c != root {
-			sets = append(sets, c.Flags())
-		}
-	}
-	takesValue := func(lookup func(*pflag.FlagSet) *pflag.Flag) bool {
-		return slices.ContainsFunc(sets, func(fs *pflag.FlagSet) bool {
-			fl := lookup(fs)
-			return fl != nil && fl.NoOptDefVal == ""
-		})
-	}
-
-	// consumed is the first command name taken as an option's value.
-	var consumed string
-	skipValue := func(i int) int {
-		if i+1 < len(args) && consumed == "" && slices.Contains(answerCommands, args[i+1]) {
-			consumed = args[i+1]
-		}
-		return i + 1
-	}
-	notFound := func() (string, string, bool) {
-		if option != "" && consumed != "" {
-			return consumed, option, true
-		}
-		return "", "", false
-	}
-
-	for i := 0; i < len(args); i++ {
-		a := args[i]
-		switch {
-		case a == "--":
-			return notFound()
-		case slices.Contains(answerCommands, a):
-			return a, option, option != ""
-		case a == "-h", a == "-v",
-			a == "--help", strings.HasPrefix(a, "--help="),
-			a == "--version", strings.HasPrefix(a, "--version="):
-		case strings.HasPrefix(a, "--"):
-			if option == "" {
-				option = a
-			}
-			n, _, hasValue := strings.Cut(a[2:], "=")
-			if !hasValue && takesValue(func(fs *pflag.FlagSet) *pflag.Flag { return fs.Lookup(n) }) {
-				i = skipValue(i)
-			}
-		case strings.HasPrefix(a, "-"):
-			if option == "" {
-				option = a
-			}
-			// A run of shorthands ends at the first one that takes a value,
-			// which takes the rest of the argument or the next one.
-			for j := 1; j < len(a); j++ {
-				short := a[j : j+1]
-				if takesValue(func(fs *pflag.FlagSet) *pflag.Flag { return fs.ShorthandLookup(short) }) {
-					if j == len(a)-1 {
-						i = skipValue(i)
-					}
-					break
-				}
+// answerCommandIn returns the first subcommand of root that carries
+// answerAnnotation and whose name is one of args, with the index of that
+// argument, or root and -1 if there is none. cobra blames root for some
+// command lines meant for check or variant: an unknown option before the
+// command, as in "releash --nope check x", and an option that takes the
+// command name as its value, as in "releash --token $TOKEN check x" with an
+// empty $TOKEN. The pipeline still expects that command's answer, so run
+// prints its fallback.
+func answerCommandIn(root *cobra.Command, args []string) (*cobra.Command, int) {
+	for i, a := range args {
+		for _, c := range root.Commands() {
+			if c.Name() == a && c.Annotations[answerAnnotation] != "" {
+				return c, i
 			}
 		}
 	}
-	return notFound()
+	return root, -1
 }
 
-// fallbackAnswer returns what cmd prints on stdout when releash cannot run it
-// with args, and false if cmd does not carry answerAnnotation: "false\n" for
-// check, and for variant the disabled variant in the format and prefix that
-// args give, or nothing when they give none (see variantFallback).
-func fallbackAnswer(cmd *cobra.Command, args []string) (string, bool) {
+// fallbackAnswer returns what cmd prints on stdout when it exits with code
+// without giving an answer, and false if cmd does not carry answerAnnotation.
+// For check it is "false\n". For variant it is nothing on ExitUsage (ADR
+// 0008), and otherwise the disabled variant in the format and prefix that
+// cmd's flags hold, or nothing if they hold no single valid one (see
+// releash.VariantFallback).
+func fallbackAnswer(cmd *cobra.Command, code int) (string, bool) {
 	if cmd == nil {
 		return "", false
 	}
@@ -226,7 +161,13 @@ func fallbackAnswer(cmd *cobra.Command, args []string) (string, bool) {
 	case booleanAnswer:
 		return "false\n", true
 	case variantAnswer:
-		return variantFallback(cmd, args), true
+		if code == releash.ExitUsage {
+			return "", true
+		}
+		// The flags are empty if the panic came before cobra parsed them.
+		formats, _ := cmd.Flags().GetStringArray(releash.OptionFormat)
+		prefixes, _ := cmd.Flags().GetStringArray(releash.OptionPrefix)
+		return releash.VariantFallback(cmd.Flags().Args(), formats, prefixes), true
 	}
 	return "", false
 }
@@ -234,7 +175,15 @@ func fallbackAnswer(cmd *cobra.Command, args []string) (string, bool) {
 // NewRootCommand returns the releash root command, which prints help when run
 // without a subcommand. It and its check and variant commands print "releash
 // version <version>" for --version. Its subcommands write through r.
+//
+// The options that check and variant share are persistent flags of the root
+// command, so they may also go before the command name, as in
+// "releash --loud check x". They are hidden from the root command's help,
+// which lists only --help and --version; each command's help lists them.
 func NewRootCommand(r *releash.Releash, version string) *cobra.Command {
+	var opts releash.CheckOptions
+	given := make(map[string]int)
+
 	cmd := &cobra.Command{
 		Use:     "releash",
 		Short:   "Drive CI/CD changes with Unleash feature flags.",
@@ -249,6 +198,9 @@ func NewRootCommand(r *releash.Releash, version string) *cobra.Command {
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
+			if !cmd.HasParent() {
+				return optionWithoutCommand(cmd)
+			}
 			r.Out = cmd.OutOrStdout()
 			r.Err = cmd.ErrOrStderr()
 			return initializeConfig(cmd)
@@ -258,10 +210,16 @@ func NewRootCommand(r *releash.Releash, version string) *cobra.Command {
 		},
 	}
 
+	pf := cmd.PersistentFlags()
+	pf.SortFlags = false
+	addCheckFlags(pf, &opts)
+	countValues(pf, given)
+	pf.VisitAll(func(fl *pflag.Flag) { fl.Hidden = true })
+
 	// Subcommands inherit the template. The default one would print
 	// "releash check version ..." for check.
 	cmd.SetVersionTemplate("releash version {{.Version}}\n")
-	cmd.AddCommand(newCheckCommand(r, version), newVariantCommand(r, version))
+	cmd.AddCommand(newCheckCommand(r, version, &opts, given), newVariantCommand(r, version, &opts, given))
 	plainHelpAndVersion(cmd)
 	// cobra would add its help command only when it runs, too late for
 	// plainHelpAndVersion. Adding it here makes cobra reuse this one.
@@ -272,6 +230,23 @@ func NewRootCommand(r *releash.Releash, version string) *cobra.Command {
 		}
 	}
 	return cmd
+}
+
+// optionWithoutCommand returns an error naming the first shared option given
+// to root itself, as in "releash --loud", or nil if there is none. It must
+// run before bindFlags, which marks options set from the environment as
+// changed.
+func optionWithoutCommand(root *cobra.Command) error {
+	var name string
+	root.PersistentFlags().VisitAll(func(fl *pflag.Flag) {
+		if name == "" && fl.Changed {
+			name = fl.Name
+		}
+	})
+	if name == "" {
+		return nil
+	}
+	return fmt.Errorf("--%s needs a command: releash check <flag> or releash variant <flag>", name)
 }
 
 // plainHelpAndVersion adds cobra's --help and --version flags to cmd now,
@@ -296,13 +271,11 @@ type plainValue struct {
 	pflag.Value
 }
 
-// newCheckCommand returns the check command, which maps its arguments and
-// options to releash.CheckOptions and calls r.Check. With --version it prints
-// version and exits 0 without validating anything, as spec 0001 allows.
-func newCheckCommand(r *releash.Releash, version string) *cobra.Command {
-	var opts releash.CheckOptions
-	given := make(map[string]int)
-
+// newCheckCommand returns the check command, which calls r.Check with the
+// flag name and the shared options that the root command parses into opts and
+// counts into given. With --version it prints version and exits 0 without
+// validating anything, as spec 0001 allows.
+func newCheckCommand(r *releash.Releash, version string, opts *releash.CheckOptions, given map[string]int) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "check <flag>",
 		Short: "Print true if a feature flag is enabled, false otherwise.",
@@ -317,33 +290,30 @@ Unleash URL or token, 4 for an invalid value and 5 for a value given twice.`,
 		Args:        checkArgs,
 		Annotations: map[string]string{answerAnnotation: booleanAnswer},
 		RunE: func(_ *cobra.Command, args []string) error {
-			opts.Flag = args[0]
-			opts.Given = given
-			if code := r.Check(opts); code != releash.ExitOK {
+			o := *opts
+			o.Flag = args[0]
+			o.Given = given
+			if code := r.Check(o); code != releash.ExitOK {
 				return exitCodeError(code)
 			}
 			return nil
 		},
 	}
 
-	f := cmd.Flags()
-	f.SortFlags = false
-	addCheckFlags(f, &opts, "explain on stderr why the answer is false")
-	countValues(f, given)
-
-	cmd.SetUsageFunc(usage(checkSynopsis, releash.ReleashOptions()))
+	cmd.SetUsageFunc(usage(checkSynopsis, releash.ReleashOptions(), "explain on stderr why the answer is false"))
 	plainHelpAndVersion(cmd)
 	return cmd
 }
 
 // addCheckFlags defines the connection and context options that check and
-// variant share in f, bound to opts, with loudUsage as the help text of
-// --loud. --url and --token fall back to UNLEASH_URL and UNLEASH_API_TOKEN.
-func addCheckFlags(f *pflag.FlagSet, opts *releash.CheckOptions, loudUsage string) {
+// variant share in f, bound to opts. --url and --token fall back to
+// UNLEASH_URL and UNLEASH_API_TOKEN. The help text of --loud differs per
+// command, so each command's usage function sets it.
+func addCheckFlags(f *pflag.FlagSet, opts *releash.CheckOptions) {
 	f.StringVar(&opts.URL, releash.OptionURL, "", "Unleash API `url`, including /api (env UNLEASH_URL)")
 	f.StringVar(&opts.Token, releash.OptionToken, "", "Unleash client API `token` (env UNLEASH_API_TOKEN, which keeps it out of process listings)")
 	f.StringVar(&opts.Timeout, releash.OptionTimeout, releash.DefaultTimeout.String(), "how long to wait for Unleash, as a positive Go `duration`")
-	f.BoolVar(&opts.Loud, releash.OptionLoud, false, loudUsage)
+	f.BoolVar(&opts.Loud, releash.OptionLoud, false, "explain fallbacks on stderr")
 	f.StringVar(&opts.Env, releash.OptionEnv, releash.DefaultEnvironment, "environment in the context, as a `name`")
 	f.StringVar(&opts.AppName, releash.OptionAppName, releash.DefaultAppName, "appName in the context, and the `name` releash registers with")
 	f.StringVar(&opts.UserID, releash.OptionUserID, "", "userId in the context, as an `id`")
@@ -384,7 +354,9 @@ func checkArgs(_ *cobra.Command, args []string) error {
 // usage returns the usage function of the check or variant command: synopsis,
 // then releashOptions, the context options of spec 0001 and the other
 // options (--help, --version), each under its own heading, in that order.
-func usage(synopsis string, releashOptions []string) func(*cobra.Command) error {
+// It lists the shared options although the root command hides them, and
+// gives --loud the help text loudUsage.
+func usage(synopsis string, releashOptions []string, loudUsage string) func(*cobra.Command) error {
 	return func(cmd *cobra.Command) error {
 		var b strings.Builder
 		fmt.Fprintf(&b, "Usage:\n%s\n", synopsis)
@@ -400,9 +372,16 @@ func usage(synopsis string, releashOptions []string) func(*cobra.Command) error 
 			fs := pflag.NewFlagSet(g.title, pflag.ContinueOnError)
 			fs.SortFlags = false
 			for _, name := range g.names {
-				if fl := cmd.Flags().Lookup(name); fl != nil {
-					fs.AddFlag(fl)
+				fl := cmd.Flag(name)
+				if fl == nil {
+					continue
 				}
+				shown := *fl
+				shown.Hidden = false
+				if name == releash.OptionLoud {
+					shown.Usage = loudUsage
+				}
+				fs.AddFlag(&shown)
 			}
 			if fs.HasFlags() {
 				fmt.Fprintf(&b, "\n%s:\n%s", g.title, fs.FlagUsages())
@@ -434,13 +413,12 @@ func mustAnnotate(f *pflag.FlagSet, name, key string, values ...string) {
 	}
 }
 
-// newVariantCommand returns the variant command, which maps its arguments and
-// options to releash.VariantOptions and calls r.Variant. It shares every
-// option of check and adds --format and --prefix. With --version it prints
-// version and exits 0 without validating anything, as check does.
-func newVariantCommand(r *releash.Releash, version string) *cobra.Command {
-	var opts releash.VariantOptions
-	given := make(map[string]int)
+// newVariantCommand returns the variant command, which calls r.Variant with
+// the flag name, its own --format and --prefix, and the shared options that
+// the root command parses into opts and counts into given. With --version it
+// prints version and exits 0 without validating anything, as check does.
+func newVariantCommand(r *releash.Releash, version string, opts *releash.CheckOptions, given map[string]int) *cobra.Command {
+	var formats, prefixes []string
 
 	cmd := &cobra.Command{
 		Use:   "variant <flag>",
@@ -454,18 +432,18 @@ exits 6.
 If Unleash cannot answer, or the payload cannot be printed, it prints the
 disabled variant and exits 0; --loud says why on stderr.
 
-A mistake in the command or its configuration prints the disabled variant, or
-nothing when the format, prefix or flag name is invalid or ambiguous, writes
-an error to stderr and exits non-zero: 2 for a bad command line, 3 for a
-missing Unleash URL or token, 4 for an invalid value and 5 for a value given
-twice.`,
+A bad command line prints nothing, writes an error to stderr and exits 2.
+Any other mistake in the command or its configuration prints the disabled
+variant, writes an error to stderr and exits non-zero: 3 for a missing
+Unleash URL or token, 4 for an invalid value and 5 for a value given twice.`,
 		Version:     version,
 		Args:        checkArgs,
 		Annotations: map[string]string{answerAnnotation: variantAnswer},
 		RunE: func(_ *cobra.Command, args []string) error {
-			opts.Flag = args[0]
-			opts.Given = given
-			if code := r.Variant(opts); code != releash.ExitOK {
+			o := releash.VariantOptions{CheckOptions: *opts, Formats: formats, Prefixes: prefixes}
+			o.Flag = args[0]
+			o.Given = given
+			if code := r.Variant(o); code != releash.ExitOK {
 				return exitCodeError(code)
 			}
 			return nil
@@ -474,75 +452,15 @@ twice.`,
 
 	f := cmd.Flags()
 	f.SortFlags = false
-	addCheckFlags(f, &opts.CheckOptions, "explain on stderr why the variant fell back to disabled, and warn when it may differ between runs")
-	// String arrays keep every value, so a repeat can be told from a
-	// repeat of the same value, which still decides the fallback's format.
-	f.StringArrayVar(&opts.Formats, releash.OptionFormat, nil, "output `format`: dotenv for NAME=value lines, or shell for export statements (default dotenv)")
-	f.StringArrayVar(&opts.Prefixes, releash.OptionPrefix, nil, "`prefix` of every variable name, matching ^[A-Z][A-Z0-9_]*$ (default: RELEASH_, then the flag name in upper case with every other character as _, then _)")
-	countValues(f, given)
+	// String arrays keep every value, so validation can count repeats and
+	// the panic fallback can tell whether every value is the same.
+	f.StringArrayVar(&formats, releash.OptionFormat, nil, "output `format`: dotenv for NAME=value lines, or shell for export statements (default dotenv)")
+	f.StringArrayVar(&prefixes, releash.OptionPrefix, nil, "`prefix` of every variable name, matching ^[A-Z][A-Z0-9_]*$ (default: RELEASH_, then the flag name in upper case with every other character as _, then _)")
 
-	cmd.SetUsageFunc(usage(variantSynopsis, append(releash.ReleashOptions(), releash.OutputOptions()...)))
+	cmd.SetUsageFunc(usage(variantSynopsis, append(releash.ReleashOptions(), releash.OutputOptions()...),
+		"explain on stderr why the variant fell back to disabled, and warn when it may differ between runs"))
 	plainHelpAndVersion(cmd)
 	return cmd
-}
-
-// variantFallback returns the disabled variant that the variant command cmd
-// prints when it cannot run with args, or "" when args name no single
-// format and prefix (see releash.VariantFallback). It reads args as pflag
-// parses them for cmd, without parsing them, because the error may be in the
-// command line itself.
-func variantFallback(cmd *cobra.Command, args []string) string {
-	flags, formats, prefixes := scanArgs(cmd.Flags(), cmd.Name(), args)
-	return releash.VariantFallback(flags, formats, prefixes)
-}
-
-// scanArgs reads args the way pflag parses them for fs and returns the
-// positional arguments, apart from the first one that equals command, and
-// the values of every --format and --prefix, in order.
-//
-// An option that takes a value consumes the next argument when it is written
-// without "=", even one that starts with "-", and a trailing one gets the
-// empty value. Every argument after "--" is positional. An unknown option is
-// taken to have no value, so the scan goes on past it.
-func scanArgs(fs *pflag.FlagSet, command string, args []string) (positional, formats, prefixes []string) {
-	takesValue := func(fl *pflag.Flag) bool { return fl != nil && fl.NoOptDefVal == "" }
-	commandSeen := false
-	for i := 0; i < len(args); i++ {
-		a := args[i]
-		switch {
-		case a == "--":
-			positional = append(positional, args[i+1:]...)
-			return positional, formats, prefixes
-		case strings.HasPrefix(a, "--"):
-			name, value, hasValue := strings.Cut(a[2:], "=")
-			if !hasValue && takesValue(fs.Lookup(name)) && i+1 < len(args) {
-				i++
-				value = args[i]
-			}
-			switch name {
-			case releash.OptionFormat:
-				formats = append(formats, value)
-			case releash.OptionPrefix:
-				prefixes = append(prefixes, value)
-			}
-		case strings.HasPrefix(a, "-") && len(a) > 1:
-			// A run of shorthands ends at the first one that takes a value,
-			// which takes the rest of the argument or the next one.
-			for j := 1; j < len(a); j++ {
-				if takesValue(fs.ShorthandLookup(a[j : j+1])) {
-					if j == len(a)-1 && i+1 < len(args) {
-						i++
-					}
-					break
-				}
-			}
-		case !commandSeen && a == command:
-			commandSeen = true
-		default:
-			positional = append(positional, a)
-		}
-	}
-	return positional, formats, prefixes
 }
 
 // resolveVersion returns injected if it is set. Otherwise it returns the main

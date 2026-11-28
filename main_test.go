@@ -153,6 +153,22 @@ func TestExecute(t *testing.T) {
 			wantCode:           releash.ExitUsage,
 			wantStderrContains: []string{`unknown command "completion"`},
 		},
+		// The shared options are persistent flags of the root command, but
+		// they need a command to apply to.
+		{
+			name:               "shared option without a command exits 2",
+			args:               []string{"--loud"},
+			version:            "dev",
+			wantCode:           releash.ExitUsage,
+			wantStderrContains: []string{"--loud needs a command", "releash --help"},
+		},
+		{
+			name:               "invalid shared option without a command exits 2",
+			args:               []string{"--timeout", "abc"},
+			version:            "dev",
+			wantCode:           releash.ExitUsage,
+			wantStderrContains: []string{"--timeout needs a command"},
+		},
 		{
 			name:               "unknown option exits 2",
 			args:               []string{"--bogus"},
@@ -322,9 +338,10 @@ func TestBindFlags(t *testing.T) {
 // errors keep the stdout and exit code contract:
 //   - environment fallback for --url and --token, and options winning over it
 //   - missing or empty URL or token from either source exits 3
-//   - missing flag name, extra arguments, unknown or malformed options, an
-//     option before the check command, an invalid --timeout and a repeated
-//     releash option exit 2
+//   - options before the check command work as they do after it
+//   - missing flag name, extra arguments, unknown or malformed options (also
+//     before the check command, where cobra blames the root command), an
+//     invalid --timeout and a repeated releash option exit 2
 //   - invalid context values exit 4, repeated context options exit 5
 //   - defaults are not duplicates, property values keep '=' and commas
 //   - the lowest exit code wins
@@ -356,6 +373,11 @@ func TestCheckCommand(t *testing.T) {
 		{name: "URL and token from options", args: []string{"check", "x", "--url", testURL, "--token", testToken}, wantCode: releash.ExitOK},
 		{name: "--loud explains the answer", env: configured, args: []string{"check", "x", "--loud"}, loud: true, wantCode: releash.ExitOK, wantStderr: loudLine},
 		{name: "options before the flag name", env: configured, args: []string{"check", "--loud", "--env", "staging", "x"}, loud: true, wantCode: releash.ExitOK, wantStderr: loudLine},
+		{name: "boolean option before check", env: configured, args: []string{"--loud", "check", "x"}, loud: true, wantCode: releash.ExitOK, wantStderr: loudLine},
+		{name: "option with a value before check", args: []string{"--url", testURL, "--token=" + testToken, "check", "x"}, wantCode: releash.ExitOK},
+		// --user-id takes "variant" as its value, so the command is check.
+		{name: "command name as the value of an option before check", env: configured, args: []string{"--user-id", "variant", "check", "x"}, wantCode: releash.ExitOK},
+		{name: "option before check and given again after it", env: configured, args: []string{"--env", "a", "check", "x", "--env", "b"}, wantCode: releash.ExitDuplicate, wantStderr: "releash: --env given 2 times; give it at most once\n"},
 		{
 			name:     "every option once",
 			env:      configured,
@@ -394,17 +416,15 @@ func TestCheckCommand(t *testing.T) {
 		{name: "option without a value", env: configured, args: []string{"check", "x", "--env"}, loud: true, wantCode: releash.ExitUsage, wantStderr: "releash: flag needs an argument: --env\n" + checkHelp},
 		// pflag's message continues with strconv's error, which is not ours.
 		{name: "--loud with a non-boolean value", env: configured, args: []string{"check", "x", "--loud=maybe"}, loud: true, wantCode: releash.ExitUsage, wantStderrPrefix: `releash: invalid argument "maybe" for "--loud" flag`, wantStderr: checkHelp},
-		// Options before the check command are rejected whether or not they
-		// take a value, and the answer contract still holds.
-		{name: "boolean option before check", env: configured, args: []string{"--loud", "check", "x"}, loud: true, wantCode: releash.ExitUsage, wantStderr: "releash: --loud given before check; put options after 'check <flag>'\n" + checkHelp},
-		{name: "option with a value before check", env: configured, args: []string{"--url", testURL, "check", "x"}, wantCode: releash.ExitUsage, wantStderr: "releash: --url given before check; put options after 'check <flag>'\n" + checkHelp},
-		{name: "option with = before check", env: configured, args: []string{"--env=staging", "check", "x"}, wantCode: releash.ExitUsage, wantStderr: "releash: --env=staging given before check; put options after 'check <flag>'\n" + checkHelp},
-		// --user-id takes "variant" as its value, so the command is check.
-		{name: "command name as the value of an option before check", env: configured, args: []string{"--user-id", "variant", "check", "x"}, wantCode: releash.ExitUsage, wantStderr: "releash: --user-id given before check; put options after 'check <flag>'\n" + checkHelp},
+		// cobra blames the root command for these, and check's answer
+		// contract still holds.
+		{name: "unknown option before check", env: configured, args: []string{"--nope", "check", "x"}, wantCode: releash.ExitUsage, wantStderr: "releash: unknown flag: --nope\n" + checkHelp},
 		// An empty $TOKEN in "--token $TOKEN check x" leaves check as the
-		// value of --token; it is still the command.
-		{name: "only command name is the value of an option before it", env: configured, args: []string{"--token", "check", "x"}, wantCode: releash.ExitUsage, wantStderr: "releash: --token given before check; put options after 'check <flag>'\n" + checkHelp},
-		{name: "only command name is the value of a variant option before it", env: configured, args: []string{"--format", "check", "x"}, wantCode: releash.ExitUsage, wantStderr: "releash: --format given before check; put options after 'check <flag>'\n" + checkHelp},
+		// value of --token.
+		{name: "command name is the value of an option before it", env: configured, args: []string{"--token", "check", "x"}, wantCode: releash.ExitUsage, wantStderr: "releash: unknown command \"x\" for \"releash\"\nreleash: --token may be missing its value and have taken \"check\" instead\n" + checkHelp},
+		// A mistyped command before check still gets check's answer.
+		{name: "unknown command before check", env: configured, args: []string{"foo", "check"}, wantCode: releash.ExitUsage, wantStderr: "releash: unknown command \"foo\" for \"releash\"\n" + checkHelp},
+		{name: "variant option before check", env: configured, args: []string{"--format", "shell", "check", "x"}, wantCode: releash.ExitUsage, wantStderr: "releash: unknown flag: --format\n" + checkHelp},
 		{name: "--timeout abc", env: configured, args: []string{"check", "x", "--timeout", "abc"}, wantCode: releash.ExitUsage, wantStderr: "releash: invalid --timeout \"abc\": must be a positive Go duration, e.g. 5s\n" + checkHelp},
 		{name: "--timeout 0", env: configured, args: []string{"check", "x", "--timeout", "0"}, wantCode: releash.ExitUsage, wantStderr: "releash: invalid --timeout \"0\": must be a positive Go duration, e.g. 5s\n" + checkHelp},
 		{name: "--timeout -1s", env: configured, args: []string{"check", "x", "--timeout=-1s"}, wantCode: releash.ExitUsage, wantStderr: "releash: invalid --timeout \"-1s\": must be a positive Go duration, e.g. 5s\n" + checkHelp},
@@ -592,12 +612,12 @@ func TestPanicDuringCheckStillPrintsFalse(t *testing.T) {
 // validation; these check the command line around them:
 //   - options and environment variables reach Variant, and an evaluated
 //     variant is printed
-//   - every exit prints the fallback in the format and with the prefix the
-//     raw arguments give, or nothing when they give no single one: cobra's
-//     parse errors before and after --format, an option given before the
-//     command, a missing or extra flag name, a trailing --format, --format
-//     after --, a --format that is another option's value, and every code of
-//     spec 0001; --loud changes neither stdout nor the exit code
+//   - options before the command work as they do after it
+//   - a bad command line exits 2 with empty stdout, whatever --format and
+//     --prefix say: cobra's parse errors, also before the command, a missing
+//     or extra flag name and a repeated or invalid option
+//   - exits 3 to 5 print the fallback in the format and with the prefix
+//     given; --loud changes neither stdout nor the exit code
 //   - --help lists the releash options, including --format and --prefix,
 //     the context options and the other options under check's headings
 //   - --version prints the version and exits 0
@@ -630,42 +650,33 @@ func TestVariantCommand(t *testing.T) {
 		},
 		{name: "--format= and --prefix= forms", env: configured, args: []string{"variant", "x", "--format=shell", "--prefix=P_"}, wantCode: releash.ExitOK, wantStdout: "export P_ENABLED='false'\nexport P_VARIANT='disabled'\n"},
 
-		// The scan of the raw arguments decides the fallback of parse errors.
-		{name: "unknown option before --format", env: configured, args: []string{"variant", "x", "--bogus", "--format", "shell"}, wantCode: releash.ExitUsage, wantStdout: shellFallback, wantStderr: "releash: unknown flag: --bogus\n" + variantHelp},
-		{name: "unknown option after --format", env: configured, args: []string{"variant", "x", "--format", "shell", "--bogus"}, wantCode: releash.ExitUsage, wantStdout: shellFallback, wantStderr: "releash: unknown flag: --bogus\n" + variantHelp},
-		{name: "unknown shorthand", env: configured, args: []string{"variant", "x", "-z", "--format=shell"}, wantCode: releash.ExitUsage, wantStdout: shellFallback, wantStderr: "releash: unknown shorthand flag: 'z' in -z\n" + variantHelp},
+		// A bad command line prints nothing (ADR 0008), whatever --format
+		// and --prefix say.
+		{name: "unknown option with --format", env: configured, args: []string{"variant", "x", "--bogus", "--format", "shell"}, wantCode: releash.ExitUsage, wantStderr: "releash: unknown flag: --bogus\n" + variantHelp},
+		{name: "unknown shorthand", env: configured, args: []string{"variant", "x", "-z", "--format=shell"}, wantCode: releash.ExitUsage, wantStderr: "releash: unknown shorthand flag: 'z' in -z\n" + variantHelp},
 		{name: "trailing --format", env: configured, args: []string{"variant", "x", "--format"}, loud: true, wantCode: releash.ExitUsage, wantStderr: "releash: flag needs an argument: --format\n" + variantHelp},
-		{name: "--format after --", env: configured, args: []string{"variant", "x", "--bogus", "--", "--format", "shell"}, wantCode: releash.ExitUsage, wantStderr: "releash: unknown flag: --bogus\n" + variantHelp},
-		{name: "--format after -- with --prefix before it", env: configured, args: []string{"variant", "x", "--prefix", "P_", "--bogus", "--", "--format", "shell"}, wantCode: releash.ExitUsage, wantStdout: "P_ENABLED=false\nP_VARIANT=disabled\n", wantStderr: "releash: unknown flag: --bogus\n" + variantHelp},
-		{name: "--user-id --format is a user ID", env: configured, args: []string{"variant", "x", "--user-id", "--format", "--bogus"}, wantCode: releash.ExitUsage, wantStdout: dotenvFallback, wantStderr: "releash: unknown flag: --bogus\n" + variantHelp},
-		{name: "--format whose value starts with -", env: configured, args: []string{"variant", "x", "--format", "--loud", "--bogus"}, wantCode: releash.ExitUsage, wantStderr: "releash: unknown flag: --bogus\n" + variantHelp},
-		{name: "invalid --format with a parse error", env: configured, args: []string{"variant", "x", "--format", "json", "--bogus"}, wantCode: releash.ExitUsage, wantStderr: "releash: unknown flag: --bogus\n" + variantHelp},
-		{name: "two different formats with a parse error", env: configured, args: []string{"variant", "x", "--format", "shell", "--format=dotenv", "--bogus"}, wantCode: releash.ExitUsage, wantStderr: "releash: unknown flag: --bogus\n" + variantHelp},
-		{name: "the same --format twice with a parse error", env: configured, args: []string{"variant", "x", "--format", "shell", "--format=shell", "--bogus"}, wantCode: releash.ExitUsage, wantStdout: shellFallback, wantStderr: "releash: unknown flag: --bogus\n" + variantHelp},
-		{name: "invalid --prefix with a parse error", env: configured, args: []string{"variant", "x", "--prefix", "p_", "--bogus"}, wantCode: releash.ExitUsage, wantStderr: "releash: unknown flag: --bogus\n" + variantHelp},
-		{name: "two different prefixes with a parse error", env: configured, args: []string{"variant", "x", "--prefix", "P_", "--prefix", "Q_", "--bogus"}, wantCode: releash.ExitUsage, wantStderr: "releash: unknown flag: --bogus\n" + variantHelp},
 		{name: "missing flag name", env: configured, args: []string{"variant"}, wantCode: releash.ExitUsage, wantStderr: "releash: missing flag name\n" + variantHelp},
-		{name: "missing flag name with --prefix", env: configured, args: []string{"variant", "--prefix", "P_"}, wantCode: releash.ExitUsage, wantStdout: "P_ENABLED=false\nP_VARIANT=disabled\n", wantStderr: "releash: missing flag name\n" + variantHelp},
+		{name: "missing flag name with --prefix", env: configured, args: []string{"variant", "--prefix", "P_"}, wantCode: releash.ExitUsage, wantStderr: "releash: missing flag name\n" + variantHelp},
 		{name: "empty flag name", env: configured, args: []string{"variant", ""}, wantCode: releash.ExitUsage, wantStderr: "releash: missing flag name\n" + variantHelp},
-		{name: "two flag names", env: configured, args: []string{"variant", "x", "y"}, wantCode: releash.ExitUsage, wantStderr: "releash: expected one flag name, got 2 arguments: x y\n" + variantHelp},
-		{name: "two flag names with --prefix", env: configured, args: []string{"variant", "x", "y", "--prefix", "P_", "--format", "shell"}, wantCode: releash.ExitUsage, wantStdout: "export P_ENABLED='false'\nexport P_VARIANT='disabled'\n", wantStderr: "releash: expected one flag name, got 2 arguments: x y\n" + variantHelp},
-		{name: "a flag named variant", env: configured, args: []string{"variant", "variant", "--bogus"}, wantCode: releash.ExitUsage, wantStdout: "RELEASH_VARIANT_ENABLED=false\nRELEASH_VARIANT_VARIANT=disabled\n", wantStderr: "releash: unknown flag: --bogus\n" + variantHelp},
+		{name: "two flag names", env: configured, args: []string{"variant", "x", "y", "--prefix", "P_", "--format", "shell"}, wantCode: releash.ExitUsage, wantStderr: "releash: expected one flag name, got 2 arguments: x y\n" + variantHelp},
 
 		// Options before the command.
-		{name: "boolean option before variant", env: configured, args: []string{"--loud", "variant", "x"}, loud: true, wantCode: releash.ExitUsage, wantStdout: dotenvFallback, wantStderr: "releash: --loud given before variant; put options after 'variant <flag>'\n" + variantHelp},
-		{name: "--format before variant", env: configured, args: []string{"--format", "shell", "variant", "x"}, wantCode: releash.ExitUsage, wantStdout: shellFallback, wantStderr: "releash: --format given before variant; put options after 'variant <flag>'\n" + variantHelp},
-		{name: "option with a value before variant", env: configured, args: []string{"--user-id", "variant", "variant", "x"}, wantCode: releash.ExitUsage, wantStdout: dotenvFallback, wantStderr: "releash: --user-id given before variant; put options after 'variant <flag>'\n" + variantHelp},
-		{name: "command name as the value of an option before variant", env: configured, args: []string{"--app-name", "check", "variant", "x"}, wantCode: releash.ExitUsage, wantStdout: dotenvFallback, wantStderr: "releash: --app-name given before variant; put options after 'variant <flag>'\n" + variantHelp},
-		{name: "only command name is the value of an option before it", env: configured, args: []string{"--token", "variant", "x"}, wantCode: releash.ExitUsage, wantStdout: dotenvFallback, wantStderr: "releash: --token given before variant; put options after 'variant <flag>'\n" + variantHelp},
+		{name: "boolean option before variant", env: configured, args: []string{"--loud", "variant", "x"}, loud: true, wantCode: releash.ExitOK, wantStdout: dotenvFallback, wantStderr: variantLoud},
+		{name: "--format before variant", env: configured, args: []string{"--format", "shell", "variant", "x"}, wantCode: releash.ExitOK, wantStdout: shellFallback},
+		// --user-id takes the first "variant" as its value.
+		{name: "command name as the value of an option before variant", env: configured, args: []string{"--user-id", "variant", "variant", "x"}, wantCode: releash.ExitOK, wantStdout: dotenvFallback},
+		{name: "check as the value of an option before variant", env: configured, args: []string{"--app-name", "check", "variant", "x"}, wantCode: releash.ExitOK, wantStdout: dotenvFallback},
+		{name: "unknown option before variant", env: configured, args: []string{"--nope", "variant", "x"}, wantCode: releash.ExitUsage, wantStderr: "releash: unknown flag: --nope\n" + variantHelp},
+		{name: "only command name is the value of an option before it", env: configured, args: []string{"--token", "variant", "x"}, wantCode: releash.ExitUsage, wantStderr: "releash: unknown command \"x\" for \"releash\"\nreleash: --token may be missing its value and have taken \"variant\" instead\n" + variantHelp},
 		{name: "variant before a flag named check", env: configured, args: []string{"variant", "--loud", "check"}, loud: true, wantCode: releash.ExitOK, wantStdout: "RELEASH_CHECK_ENABLED=false\nRELEASH_CHECK_VARIANT=disabled\n", wantStderr: "releash: flag \"check\" not found; returning disabled variant\n"},
 
 		// Validation in Variant.
 		{name: "invalid --format", env: configured, args: []string{"variant", "x", "--format", "json"}, wantCode: releash.ExitUsage, wantStderr: "releash: invalid --format \"json\": must be one of \"dotenv\" or \"shell\"\n" + variantHelp},
 		{name: "invalid --prefix", env: configured, args: []string{"variant", "x", "--prefix", "lower_"}, wantCode: releash.ExitUsage, wantStderr: "releash: invalid --prefix \"lower_\": must match ^[A-Z][A-Z0-9_]*$\n" + variantHelp},
 		{name: "empty --prefix", env: configured, args: []string{"variant", "x", "--prefix="}, wantCode: releash.ExitUsage, wantStderr: "releash: invalid --prefix \"\": must match ^[A-Z][A-Z0-9_]*$\n" + variantHelp},
-		{name: "--format twice with the same value", env: configured, args: []string{"variant", "x", "--format", "shell", "--format", "shell"}, wantCode: releash.ExitUsage, wantStdout: shellFallback, wantStderr: "releash: --format given 2 times; give it at most once\n" + variantHelp},
+		{name: "--format twice with the same value", env: configured, args: []string{"variant", "x", "--format", "shell", "--format", "shell"}, wantCode: releash.ExitUsage, wantStderr: "releash: --format given 2 times; give it at most once\n" + variantHelp},
 		{name: "--prefix twice with different values", env: configured, args: []string{"variant", "x", "--prefix", "P_", "--prefix", "Q_"}, wantCode: releash.ExitUsage, wantStderr: "releash: --prefix given 2 times; give it at most once\n" + variantHelp},
-		{name: "--url twice", env: configured, args: []string{"variant", "x", "--url", testURL, "--url", testURL, "--format", "shell"}, wantCode: releash.ExitUsage, wantStdout: shellFallback, wantStderr: "releash: --url given 2 times; give it at most once\n" + variantHelp},
+		{name: "--url twice", env: configured, args: []string{"variant", "x", "--url", testURL, "--url", testURL, "--format", "shell"}, wantCode: releash.ExitUsage, wantStderr: "releash: --url given 2 times; give it at most once\n" + variantHelp},
 		{name: "nothing configured", args: []string{"variant", "x", "--format", "shell"}, wantCode: releash.ExitNotConfigured, wantStdout: shellFallback, wantStderr: noURL + noToken},
 		{name: "invalid --remote-address", env: configured, args: []string{"variant", "x", "--remote-address", "nope", "--prefix", "P_"}, wantCode: releash.ExitInvalid, wantStdout: "P_ENABLED=false\nP_VARIANT=disabled\n", wantStderr: "releash: invalid --remote-address \"nope\": must be an IPv4 or IPv6 address\n"},
 		{name: "repeated property name", env: configured, args: []string{"variant", "x", "--properties", "a=1", "--properties", "a=2"}, wantCode: releash.ExitDuplicate, wantStdout: dotenvFallback, wantStderr: "releash: property \"a\" given 2 times in --properties; give each name once\n"},
@@ -838,4 +849,46 @@ func TestPanicDuringVariantPrintsTheFallback(t *testing.T) {
 			assert.Equal(t, "releash: internal error: boom\n", stderr.String(), "stderr")
 		})
 	}
+}
+
+// The shared options are root persistent flags so they may go before the
+// command, but the root command's help lists only --help and --version, and
+// the help command lists no global options.
+func TestRootHelpHidesSharedOptions(t *testing.T) {
+	for _, args := range [][]string{{"--help"}, {"help", "--help"}} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+
+			code := execute(args, &stdout, &stderr, "dev")
+
+			assert.Equal(t, releash.ExitOK, code, "exit code")
+			assert.Empty(t, stderr.String(), "stderr")
+			for _, unwanted := range []string{"--url", "--token", "--loud", "--user-id", "Global Flags"} {
+				assert.NotContains(t, stdout.String(), unwanted, "stdout")
+			}
+		})
+	}
+}
+
+func TestCheckHelpDescribesItsOwnLoud(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	code := execute([]string{"check", "--help"}, &stdout, &stderr, "dev")
+
+	assert.Equal(t, releash.ExitOK, code, "exit code")
+	assert.Contains(t, stdout.String(), "explain on stderr why the answer is false")
+	assert.NotContains(t, stdout.String(), "variant fell back")
+}
+
+// bindFlags marks --url and --token as changed when it sets them from the
+// environment, which must not count as an option given without a command.
+func TestRootIgnoresSharedOptionsFromTheEnvironment(t *testing.T) {
+	unleashEnv(t, map[string]string{"UNLEASH_URL": testURL, "UNLEASH_API_TOKEN": testToken})
+	var stdout, stderr bytes.Buffer
+
+	code := execute(nil, &stdout, &stderr, "dev")
+
+	assert.Equal(t, releash.ExitOK, code, "exit code")
+	assert.Contains(t, stdout.String(), "Usage:", "stdout")
+	assert.Empty(t, stderr.String(), "stderr")
 }
