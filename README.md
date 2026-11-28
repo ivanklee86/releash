@@ -1,5 +1,12 @@
 # releash
 
+[![CI](https://github.com/ivanklee86/releash/actions/workflows/ci.yaml/badge.svg?branch=main)](https://github.com/ivanklee86/releash/actions/workflows/ci.yaml?query=branch%3Amain)
+[![Coverage](https://raw.githubusercontent.com/ivanklee86/octocov-central/main/badges/ivanklee86/releash/coverage.svg)](https://octocov.dev/ivanklee86/releash)
+[![Test Execution Time](https://raw.githubusercontent.com/ivanklee86/octocov-central/main/badges/ivanklee86/releash/time.svg)](https://octocov.dev/ivanklee86/releash)
+[![Go Reference](https://pkg.go.dev/badge/github.com/ivanklee86/releash.svg)](https://pkg.go.dev/github.com/ivanklee86/releash)
+[![Release](https://img.shields.io/github/v/release/ivanklee86/releash)](https://github.com/ivanklee86/releash/releases/latest)
+[![License: MPL 2.0](https://img.shields.io/badge/license-MPL%202.0-brightgreen.svg)](LICENSE)
+
 A small CLI that lets CI/CD pipelines read [Unleash](https://www.getunleash.io/) feature flags.
 
 - `releash check <flag>` prints `true` or `false`, so a pipeline can gate a step on a flag.
