@@ -16,6 +16,7 @@ A flag that Unleash does not know, which is usually a typo or an archived or ren
 - 2026-11-28, taken as the consistent choice, for the user to confirm in review:
   - The line is the existing `--loud` line, unchanged: `releash: flag "<flag>" not found; returning false` (or `...; returning disabled variant`). With `--loud` it is written once.
   - Notes, such as the default-stickiness warning, stay under `--loud`. A not-found fallback has none anyway.
+  - From review: when Unleash sends no flags at all, the line adds `(unleash returned no flags for this token's project and environment)`, because a token scoped to the wrong project or environment, or a proxy that has not loaded its flags, would otherwise read as a typo.
 
 ## Steps
 

@@ -193,7 +193,7 @@ func askVariant(format variant.Format, prefix string) question {
 		features := client.ListFeatures()
 		i := slices.IndexFunc(features, func(f api.Feature) bool { return f.Name == req.flag })
 		if i < 0 {
-			return notFound(req.flag)
+			return notFound(req.flag, len(features))
 		}
 		if !v.FeatureEnabled {
 			return outcome{refused: true}

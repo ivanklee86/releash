@@ -241,7 +241,7 @@ releash prints the disabled variant (`ENABLED=false`, `VARIANT=disabled`, no pay
 - Flattening produces a collision.
 - A value cannot be represented in the requested format.
 
-These are problems with what is stored in Unleash, not mistakes in the command, so like spec 0001's fallbacks they exit 0 and are reported only under `--loud`. As in spec 0001, a flag that Unleash does not know is reported with or without `--loud` ([ADR 0009](../adrs/0009-report-unknown-flag-without-loud.md)), e.g. `releash: payload of variant "treatment" has colliding keys "a-b" and "a_b"; returning disabled variant`.
+These are problems with what is stored in Unleash, not mistakes in the command, so like spec 0001's fallbacks they exit 0 and are reported only under `--loud`, e.g. `releash: payload of variant "treatment" has colliding keys "a-b" and "a_b"; returning disabled variant`. As in spec 0001, a flag that Unleash does not know is the exception and is reported with or without `--loud` ([ADR 0009](../adrs/0009-report-unknown-flag-without-loud.md)), e.g. `releash: flag "<flag>" not found; returning disabled variant`.
 
 A flag that is enabled with no variants is an answer, not a fallback, and prints nothing on stderr even with `--loud`. A disabled flag exits 6 (see [Output and exit codes](#output-and-exit-codes)).
 
@@ -271,7 +271,7 @@ A fallback exits 0 even when it happens after `check` answered `true`, e.g. beca
 - Fallback: every fallback case of spec 0001, invalid JSON in a `json` payload, and each unrepresentable value print the disabled variant, exit 0 and finish within `--timeout`; all but the unknown flag are silent without `--loud`.
 - Command and configuration errors: exits 3, 4 and 5 print the fallback in the requested format and with the requested prefix. Exit 2 prints nothing, whether cobra or validation finds the problem: an unknown option with a valid `--format`, a trailing `--format`, `--format` or `--prefix` given twice with the same value, a missing or extra flag name with a valid `--prefix`, and an invalid `--timeout`. A recovered panic prints the fallback in the parsed format and prefix and exits 1, or prints nothing when they are invalid.
 - Option placement: shared options and `--format` before `variant` work as they do after it; an option that takes `variant` or `check` as its value does not change the command; an unknown option before `variant` exits 2 with empty stdout.
-- Unknown and disabled flags: an unknown flag prints the disabled variant and exits 0 with the not-found `--loud` line; a disabled flag exits 6; a flag the SDK cannot evaluate falls back with exit 0.
+- Unknown and disabled flags: an unknown flag prints the disabled variant and exits 0 with the not-found line on stderr, with or without `--loud`; a disabled flag exits 6; a flag the SDK cannot evaluate falls back with exit 0.
 - Metrics: a successful variant evaluation sends metrics, including the variant count, before exit; a fallback and exit 6 do not wait for metrics.
 
 ## Versioning

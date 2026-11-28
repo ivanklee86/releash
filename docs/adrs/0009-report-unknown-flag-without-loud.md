@@ -39,7 +39,7 @@ Chosen option: "Always write the not-found line to stderr", because it makes the
 * Good, because spec 0002 counts additional stderr output as non-breaking, so this ships in a minor release under "Features".
 * Bad, because a pipeline that checks a flag before creating it in Unleash, on purpose, now gets a stderr line on every run. It can redirect stderr for that call.
 * Bad, because a pipeline that treats any stderr output as failure, which is rare in CI, now fails for an unknown flag. That is the outcome this change wants, but it arrives without an exit code.
-* Neutral, because a flag in a project the token cannot see is reported the same way. Unleash does not tell the two apart, and both are mistakes in the pipeline's configuration.
+* Neutral, because a flag in a project the token cannot see is reported the same way. Unleash does not tell the two apart, and both are mistakes in the pipeline's configuration. When Unleash sends no flags at all, which points at the token's project or environment, or at a proxy that has not loaded its flags yet, rather than at a typo, the line adds `(unleash returned no flags for this token's project and environment)`.
 
 ### Confirmation
 

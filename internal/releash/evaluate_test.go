@@ -234,6 +234,7 @@ func TestCheckFallsBackToFalse(t *testing.T) {
 		alwaysReported bool
 	}{
 		{name: "unknown flag", features: serve(http.StatusOK, featuresJSON(enabledFlag)), flag: "missing", wantLine: `releash: flag "missing" not found; returning false`, alwaysReported: true},
+		{name: "no flags at all", features: serve(http.StatusOK, featuresJSON()), flag: "missing", wantLine: `releash: flag "missing" not found (unleash returned no flags for this token's project and environment); returning false`, alwaysReported: true},
 		{name: "401", features: serve(http.StatusUnauthorized, `{}`), wantLine: "releash: unleash rejected the API token (HTTP 401); returning false"},
 		{name: "403", features: serve(http.StatusForbidden, `{}`), wantLine: "releash: unleash rejected the API token (HTTP 403); returning false"},
 		{name: "500", features: serve(http.StatusInternalServerError, ``), wantLine: "releash: unleash answered the feature fetch with HTTP 500; returning false"},

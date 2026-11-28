@@ -294,6 +294,7 @@ func TestVariantFallsBackToTheDisabledVariant(t *testing.T) {
 		alwaysReported bool
 	}{
 		{name: "unknown flag", flag: "missing", wantLine: `releash: flag "missing" not found; returning disabled variant`, alwaysReported: true},
+		{name: "no flags at all", features: func(*testing.T) http.HandlerFunc { return serve(http.StatusOK, featuresJSON()) }, flag: "missing", wantLine: `releash: flag "missing" not found (unleash returned no flags for this token's project and environment); returning disabled variant`, alwaysReported: true},
 		{name: "401", features: func(*testing.T) http.HandlerFunc { return serve(http.StatusUnauthorized, `{}`) }, wantLine: "releash: unleash rejected the API token (HTTP 401); returning disabled variant"},
 		{name: "403", features: func(*testing.T) http.HandlerFunc { return serve(http.StatusForbidden, `{}`) }, wantLine: "releash: unleash rejected the API token (HTTP 403); returning disabled variant"},
 		{name: "500", features: func(*testing.T) http.HandlerFunc { return serve(http.StatusInternalServerError, ``) }, wantLine: "releash: unleash answered the feature fetch with HTTP 500; returning disabled variant"},
