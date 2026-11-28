@@ -2,6 +2,7 @@
 version: '3'
 
 includes:
+  claude: ./tasks/claude.yaml
   go: ./tasks/go.yaml
   release: ./tasks/release.yaml
   unleash:

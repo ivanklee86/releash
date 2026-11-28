@@ -6,7 +6,7 @@
 
 ## Goal
 
-Rules that today live only as prose in `AGENTS.md`, or as one-off steps in a plan, are checked on every pull request: lint rules for the Go style `AGENTS.md` asks for, a coverage floor and workflow linting. Milestones get a complexity budget so a new feature states up front how much code it may add.
+Rules that today live only as prose in `CLAUDE.md`, or as one-off steps in a plan, are checked on every pull request: lint rules for the Go style `CLAUDE.md` asks for, a coverage floor and workflow linting. Milestones get a complexity budget so a new feature states up front how much code it may add.
 
 ## Baseline
 
@@ -32,14 +32,14 @@ The code is already close to every rule, so this is mostly about making the curr
 
 ### 1. Linters and the complexity budget
 
-- `.golangci.yml` enables, on top of `standard`: `revive`, `errorlint`, `gocritic`, `gocognit` (threshold 20), `exhaustive`, `gosec`, `nolintlint` (every `//nolint` names its linter and gives a reason), `misspell`, `bodyclose`, `testifylint` and `noctx`. Each gets a one-line comment saying which `AGENTS.md` rule or failure it guards against. `cyclop` is left out, because it flags the same two functions as `gocognit` and one complexity metric is enough.
+- `.golangci.yml` enables, on top of `standard`: `revive`, `errorlint`, `gocritic`, `gocognit` (threshold 20), `exhaustive`, `gosec`, `nolintlint` (every `//nolint` names its linter and gives a reason), `misspell`, `bodyclose`, `testifylint` and `noctx`. Each gets a one-line comment saying which `CLAUDE.md` rule or failure it guards against. `cyclop` is left out, because it flags the same two functions as `gocognit` and one complexity metric is enough.
 - Fix the findings rather than suppress them:
   - Split `validateCheck` into one validator per option group, so it drops below 20 without changing behaviour; the existing tests in `check_test.go` cover every exit code and must pass unchanged.
   - Bring `evaluate` from 23 to under 20 by moving the post-`Close` handling (evaluation error, address note, register note) into a helper.
   - Rename the unused test parameter to `_`; apply the five `testifylint` fixes; use `NewRequestWithContext(t.Context(), ...)` and `net.ListenConfig` in `internal/integration`.
   - G101 on the dev-only tokens and G204 on the `/bin/sh` tests get `//nolint:gosec // <reason>`, since both are deliberate.
   - `ReleashOptions` stutters on purpose: it names the "Releash options" help heading. Suppress the stutter warning on that one function with `//nolint:revive` and a reason, rather than rename it or turn the check off for the whole repository.
-- Complexity budget: add a "Complexity budget" section to `docs/agents/milestones/TEMPLATE.md`, and a line to the specs bullet in `AGENTS.md` saying new specs carry one too (the repository has no spec template file; specs follow the Rust RFC template). The section states, before work starts: new packages, new exported identifiers, new direct dependencies, and an estimate of product (non-test) lines added. It also states that no function may exceed the `gocognit` threshold, and that raising the threshold needs an ADR.
+- Complexity budget: add a "Complexity budget" section to `docs/agents/milestones/TEMPLATE.md`, and a line to the specs bullet in `CLAUDE.md` saying new specs carry one too (the repository has no spec template file; specs follow the Rust RFC template). The section states, before work starts: new packages, new exported identifiers, new direct dependencies, and an estimate of product (non-test) lines added. It also states that no function may exceed the `gocognit` threshold, and that raising the threshold needs an ADR.
 - Docs: the linting row in `docs/architecture.md` "Key technology" if it changes.
 
 ### 2. Coverage floor and workflow linting

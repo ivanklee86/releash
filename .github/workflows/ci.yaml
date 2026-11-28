@@ -48,6 +48,8 @@ jobs:
       run: task go:lint
     - name: Compile code
       run: task go:build
+    - name: Test the Claude Code hooks
+      run: task claude:test-hooks
     - name: Check that go.mod and go.sum are tidy
       run: go mod tidy -diff
 
@@ -74,8 +76,9 @@ jobs:
     runs-on: ubuntu-26.04
     env:
       # The lint job runs the same checks (golangci-lint fmt and run, go mod tidy -diff), and these
-      # hooks are `language: system`, so they would need Go and golangci-lint installed here too.
-      SKIP: golangci-lint-fmt,golangci-lint,go-mod-tidy
+      # hooks are `language: system`, so they would need Go and golangci-lint installed here too. The
+      # lint job also runs the claude-hooks tests, which need golangci-lint.
+      SKIP: golangci-lint-fmt,golangci-lint,go-mod-tidy,claude-hooks
     steps:
     - name: Checkout code
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

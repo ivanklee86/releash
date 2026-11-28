@@ -1,6 +1,6 @@
 config:
   default: true
-  # Docs use full-length lines (AGENTS.md), and CLI help output in code fences runs long.
+  # Docs use full-length lines (CLAUDE.md), and CLI help output in code fences runs long.
   MD013: false
   # Specs, ADRs and milestones repeat headings such as "Consequences" under different parents.
   MD024:

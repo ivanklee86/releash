@@ -40,3 +40,6 @@ dist/
 
 # Test reports
 report.xml
+
+# Personal Claude Code overrides; .claude/settings.json is shared.
+.claude/settings.local.json

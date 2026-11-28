@@ -129,7 +129,7 @@ A cask named `releash` is published to `ivanklee86/homebrew-tap` for non-prerele
 
 ## Release notes
 
-Release notes are GitHub's automatically generated release notes, built from the pull requests merged since the previous tag. goreleaser uses them with `changelog.use: github-native`, so there is one source of notes and nothing is written by hand at release time.
+Release notes are GitHub's automatically generated release notes, built from the pull requests merged since the previous tag, with a short "Highlights" section above them. goreleaser publishes the generated notes with `changelog.use: github-native`. The Highlights say what changed for users; they are drafted in the release pull request, reviewed there before the tag is pushed, and added to the GitHub release once it verifies.
 
 `.github/release.yml` groups pull requests into categories by label:
 
