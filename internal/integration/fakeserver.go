@@ -75,7 +75,7 @@ func (f FakeUnleash) Start(t testing.TB) string {
 // on, so connecting to it is refused at once.
 func UnreachableURL(t testing.TB) string {
 	t.Helper()
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	ln, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("finding a free port: %v", err)
 	}
@@ -102,7 +102,7 @@ func orDefault(status, fallback int) int {
 // timeout.
 func UnresponsiveServer(t testing.TB) string {
 	t.Helper()
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	ln, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("starting unresponsive server: %v", err)
 	}

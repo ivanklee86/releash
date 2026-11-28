@@ -32,7 +32,7 @@ var Environments = []string{Development, Production}
 // DefaultURL is the API URL, with /api, as UNLEASH_URL is everywhere.
 const (
 	DefaultURL              = "http://localhost:4242/api"
-	DefaultAdminToken       = "*:*.releash-dev-admin-not-a-secret"
+	DefaultAdminToken       = "*:*.releash-dev-admin-not-a-secret" //nolint:gosec // G101: fixed dev-only token from docker-compose.yaml, not a secret.
 	DefaultDevelopmentToken = "default:development.releash-dev-not-a-secret"
 	DefaultProductionToken  = "default:production.releash-dev-not-a-secret"
 )

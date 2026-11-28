@@ -4,6 +4,34 @@ linters:
   # The default "standard" set (errcheck, govet, ineffassign, staticcheck, unused), stated
   # explicitly so a golangci-lint upgrade doesn't silently change what CI enforces.
   default: standard
+  enable:
+    # Doc comments on every exported identifier, starting with its name (AGENTS.md, Go Doc Comments).
+    - revive
+    # errors.Is and errors.As instead of == and type assertions on wrapped errors (Uber guide).
+    - errorlint
+    # Style and correctness checks from the Google and Uber guides that go vet leaves out.
+    - gocritic
+    # Keeps functions small enough to read; raising the threshold needs an ADR (see the milestone template).
+    - gocognit
+    # A switch on an enum names every value, so a new exit code or format cannot be missed.
+    - exhaustive
+    # releash runs next to deploy credentials.
+    - gosec
+    # Every //nolint names its linter and says why.
+    - nolintlint
+    - misspell
+    # Response bodies are closed, so a check never leaks a connection.
+    - bodyclose
+    # Idiomatic testify assertions (assert.ErrorIs, assert.Empty, ...).
+    - testifylint
+    # HTTP requests and listeners carry a context, so a test or check can be cancelled.
+    - noctx
+  settings:
+    gocognit:
+      min-complexity: 20
+    nolintlint:
+      require-explanation: true
+      require-specific: true
 
 formatters:
   enable:

@@ -130,7 +130,7 @@ func evaluate(ctx context.Context, req checkRequest) outcome {
 	}
 
 	var out outcome
-	var metricsNote, addressNote string
+	var notes fetchNotes
 	fetched := false
 	select {
 	case <-events.ready:
@@ -140,13 +140,13 @@ func evaluate(ctx context.Context, req checkRequest) outcome {
 			break
 		}
 		fetched = true
-		req.context, addressNote = withRemoteAddress(req.context, local.address())
+		req.context, notes.address = withRemoteAddress(req.context, local.address())
 		out = ask(client, req)
 		// A fallback has no usage worth waiting to report, and a refused
 		// variant fails the pipeline step anyway.
 		if out.fallback == "" && !out.refused {
 			var err error
-			if metricsNote, err = awaitMetrics(runCtx, events, log, req.timeout); err != nil {
+			if notes.metrics, err = awaitMetrics(runCtx, events, log, req.timeout); err != nil {
 				out = evaluationFailed(req.flag, err)
 			}
 		}
@@ -162,9 +162,29 @@ func evaluate(ctx context.Context, req checkRequest) outcome {
 	cancel()
 	_ = client.Close()
 
+	if !fetched {
+		return out
+	}
+	return afterFetch(out, client, events, log, req, notes)
+}
+
+// fetchNotes are the --loud notes evaluate collects before the client is
+// closed, which afterFetch adds only when they still apply.
+type fetchNotes struct {
+	// address says no local address was found for remoteAddress.
+	address string
+	// metrics says the usage metrics send failed or did not finish.
+	metrics string
+}
+
+// afterFetch completes out, the answer to req after a successful first fetch,
+// once client is closed: it turns out into a fallback if the SDK reported an
+// evaluation error, and adds the address, register and metrics notes that
+// still apply.
+func afterFetch(out outcome, client *unleash.Client, events *sdkListener, log *requestLog, req checkRequest, notes fetchNotes) outcome {
 	// A flag the SDK could not evaluate also looks disabled, so a refused
 	// outcome holds only once this has found no error.
-	if fetched && out.fallback == "" {
+	if out.fallback == "" {
 		if err := evaluationError(client, events); err != nil {
 			out = evaluationFailed(req.flag, err)
 		}
@@ -172,21 +192,19 @@ func evaluate(ctx context.Context, req checkRequest) outcome {
 
 	// The address plays no part in a fallback, such as an unknown flag or one
 	// the SDK could not evaluate.
-	if addressNote != "" && out.fallback == "" {
-		out.notes = append(out.notes, addressNote)
+	if notes.address != "" && out.fallback == "" {
+		out.notes = append(out.notes, notes.address)
 	}
-
-	// When the fetch failed, the register request usually failed for the same
-	// reason, and the fallback line already gives it.
-	if fetched {
-		if note := registerFailure(log.outcome(registerPath), registerTimeout(req.timeout)); note != "" {
-			out.notes = append(out.notes, note)
-		}
+	// Only after a successful fetch: when the fetch failed, the register
+	// request usually failed for the same reason, and the fallback line
+	// already gives it.
+	if note := registerFailure(log.outcome(registerPath), registerTimeout(req.timeout)); note != "" {
+		out.notes = append(out.notes, note)
 	}
 	// The SDK can report an evaluation error after the metrics wait ended,
 	// and a note that the answer is unaffected would then be wrong.
-	if metricsNote != "" && out.fallback == "" {
-		out.notes = append(out.notes, metricsNote)
+	if notes.metrics != "" && out.fallback == "" {
+		out.notes = append(out.notes, notes.metrics)
 	}
 	return out
 }

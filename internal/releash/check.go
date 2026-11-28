@@ -37,7 +37,7 @@ const (
 
 // ReleashOptions returns the options that control how releash connects and
 // reports, in the order help lists them. Giving one twice exits ExitUsage.
-func ReleashOptions() []string {
+func ReleashOptions() []string { //nolint:revive // exported: the name matches the "Releash options" help heading.
 	return []string{OptionURL, OptionToken, OptionTimeout, OptionLoud}
 }
 
@@ -196,12 +196,6 @@ func (r *Releash) reportOutcome(req checkRequest, out outcome, answer string) {
 // validateCheck returns opts as a checkRequest and every problem in it. The
 // request is only meaningful when there are no problems.
 func validateCheck(opts CheckOptions) (checkRequest, []problem) {
-	var problems []problem
-	report := func(code int, format string, args ...any) {
-		problems = append(problems, problem{code: code, msg: fmt.Sprintf(format, args...)})
-	}
-	given := func(option string) bool { return opts.Given[option] > 0 }
-
 	req := checkRequest{
 		flag:    opts.Flag,
 		token:   opts.Token,
@@ -214,79 +208,107 @@ func validateCheck(opts CheckOptions) (checkRequest, []problem) {
 			sessionID:   opts.SessionID,
 		},
 	}
+	var p problems
+	p.checkConnection(opts, &req)
+	p.checkContext(opts, &req.context)
+	req.context.properties = p.checkProperties(opts.Properties)
+	return req, p.list
+}
 
+// problems collects the problems validateCheck finds, in the order it finds
+// them.
+type problems struct {
+	list []problem
+}
+
+func (p *problems) report(code int, format string, args ...any) {
+	p.list = append(p.list, problem{code: code, msg: fmt.Sprintf(format, args...)})
+}
+
+// checkConnection checks the flag name and the releash options, and sets the
+// timeout and URL of req.
+func (p *problems) checkConnection(opts CheckOptions, req *checkRequest) {
 	if opts.Flag == "" {
-		report(ExitUsage, "missing flag name")
+		p.report(ExitUsage, "missing flag name")
 	}
 	for _, option := range ReleashOptions() {
 		if n := opts.Given[option]; n > 1 {
-			report(ExitUsage, "--%s given %d times; give it at most once", option, n)
+			p.report(ExitUsage, "--%s given %d times; give it at most once", option, n)
 		}
 	}
-	if given(OptionTimeout) {
+	if opts.Given[OptionTimeout] > 0 {
 		d, err := time.ParseDuration(opts.Timeout)
 		if err != nil || d <= 0 {
-			report(ExitUsage, "invalid --%s %q: must be a positive Go duration, e.g. 5s", OptionTimeout, opts.Timeout)
+			p.report(ExitUsage, "invalid --%s %q: must be a positive Go duration, e.g. 5s", OptionTimeout, opts.Timeout)
 		}
 		req.timeout = d
 	}
 
 	if opts.URL == "" {
-		report(ExitNotConfigured, "no Unleash URL: set UNLEASH_URL or --%s to the Unleash API URL", OptionURL)
+		p.report(ExitNotConfigured, "no Unleash URL: set UNLEASH_URL or --%s to the Unleash API URL", OptionURL)
 	} else if u, err := parseUnleashURL(opts.URL); err != nil {
-		report(ExitInvalid, "invalid Unleash URL %s: %v", redactURL(opts.URL), err)
+		p.report(ExitInvalid, "invalid Unleash URL %s: %v", redactURL(opts.URL), err)
 	} else {
 		req.url = u
 	}
 	if opts.Token == "" {
-		report(ExitNotConfigured, "no Unleash API token: set UNLEASH_API_TOKEN or --%s to a client API token", OptionToken)
+		p.report(ExitNotConfigured, "no Unleash API token: set UNLEASH_API_TOKEN or --%s to a client API token", OptionToken)
 	}
+}
 
+// checkContext checks the context options other than --properties and sets the
+// ones that were given in c.
+func (p *problems) checkContext(opts CheckOptions, c *evalContext) {
+	given := func(option string) bool { return opts.Given[option] > 0 }
 	for _, option := range ContextOptions() {
 		if n := opts.Given[option]; n > 1 && option != OptionProperties {
-			report(ExitDuplicate, "--%s given %d times; give it at most once", option, n)
+			p.report(ExitDuplicate, "--%s given %d times; give it at most once", option, n)
 		}
 	}
 	if given(OptionEnv) {
 		if opts.Env == "" {
-			report(ExitInvalid, "invalid --%s \"\": must not be empty", OptionEnv)
+			p.report(ExitInvalid, "invalid --%s \"\": must not be empty", OptionEnv)
 		}
-		req.context.environment = opts.Env
+		c.environment = opts.Env
 	}
 	if given(OptionAppName) {
 		if opts.AppName == "" {
-			report(ExitInvalid, "invalid --%s \"\": must not be empty", OptionAppName)
+			p.report(ExitInvalid, "invalid --%s \"\": must not be empty", OptionAppName)
 		}
-		req.context.appName = opts.AppName
+		c.appName = opts.AppName
 	}
 	if given(OptionRemoteAddress) {
 		addr, err := netip.ParseAddr(opts.RemoteAddress)
 		if err != nil || addr.Zone() != "" {
-			report(ExitInvalid, "invalid --%s %q: must be an IPv4 or IPv6 address", OptionRemoteAddress, opts.RemoteAddress)
+			p.report(ExitInvalid, "invalid --%s %q: must be an IPv4 or IPv6 address", OptionRemoteAddress, opts.RemoteAddress)
 		} else {
 			// Unmapped, so it reads the same as a detected address for that host.
-			req.context.remoteAddress = addr.Unmap().String()
+			c.remoteAddress = addr.Unmap().String()
 		}
 	}
 	if given(OptionCurrentTime) {
 		if t, err := parseRFC3339(opts.CurrentTime); err != nil {
-			report(ExitInvalid, "invalid --%s %q: must be an RFC 3339 timestamp", OptionCurrentTime, opts.CurrentTime)
+			p.report(ExitInvalid, "invalid --%s %q: must be an RFC 3339 timestamp", OptionCurrentTime, opts.CurrentTime)
 		} else {
-			req.context.currentTime = &t
+			c.currentTime = &t
 		}
 	}
+}
 
-	properties := make(map[string]string, len(opts.Properties))
+// checkProperties checks each --properties value and returns the valid ones by
+// name. A repeated name keeps its last value.
+func (p *problems) checkProperties(given []string) map[string]string {
+	properties := make(map[string]string, len(given))
 	repeated := make(map[string]int)
-	for _, p := range opts.Properties {
-		name, value, ok := strings.Cut(p, "=")
+	for _, prop := range given {
+		name, value, ok := strings.Cut(prop, "=")
 		switch {
 		case !ok:
-			report(ExitInvalid, "invalid --%s %q: must be name=value", OptionProperties, p)
+			p.report(ExitInvalid, "invalid --%s %q: must be name=value", OptionProperties, prop)
 		case name == "":
-			report(ExitInvalid, "invalid --%s %q: the property name must not be empty", OptionProperties, p)
+			p.report(ExitInvalid, "invalid --%s %q: the property name must not be empty", OptionProperties, prop)
 		case standardFields[name] != "":
-			report(ExitInvalid, "invalid --%s %q: property %q is a standard field; use --%s", OptionProperties, p, name, standardFields[name])
+			p.report(ExitInvalid, "invalid --%s %q: property %q is a standard field; use --%s", OptionProperties, prop, name, standardFields[name])
 		default:
 			if _, seen := properties[name]; seen {
 				repeated[name]++
@@ -296,16 +318,14 @@ func validateCheck(opts CheckOptions) (checkRequest, []problem) {
 	}
 	// Report repeats in the order the names were first given, so messages are
 	// stable across runs.
-	for _, p := range opts.Properties {
-		name, _, _ := strings.Cut(p, "=")
+	for _, prop := range given {
+		name, _, _ := strings.Cut(prop, "=")
 		if n := repeated[name]; n > 0 {
-			report(ExitDuplicate, "property %q given %d times in --%s; give each name once", name, n+1, OptionProperties)
+			p.report(ExitDuplicate, "property %q given %d times in --%s; give each name once", name, n+1, OptionProperties)
 			delete(repeated, name)
 		}
 	}
-	req.context.properties = properties
-
-	return req, problems
+	return properties
 }
 
 // parseUnleashURL parses s as an absolute http or https URL with a host.

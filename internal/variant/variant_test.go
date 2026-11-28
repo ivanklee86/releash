@@ -1,7 +1,6 @@
 package variant_test
 
 import (
-	"errors"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -349,7 +348,7 @@ func requireUnusable(t *testing.T, format variant.Format, r variant.Result, want
 	t.Helper()
 	out, err := variant.Render(prefix, format, r)
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, variant.ErrUnusable), "error %v does not match ErrUnusable", err)
+	require.ErrorIs(t, err, variant.ErrUnusable)
 	assert.Equal(t, want, err.Error())
 	assert.Empty(t, out)
 }
@@ -411,7 +410,7 @@ func TestRenderInvalidJSON(t *testing.T) {
 			for _, format := range []variant.Format{variant.Dotenv, variant.Shell} {
 				out, err := variant.Render(prefix, format, r)
 				require.Error(t, err)
-				assert.True(t, errors.Is(err, variant.ErrUnusable), "error %v does not match ErrUnusable", err)
+				require.ErrorIs(t, err, variant.ErrUnusable)
 				assert.True(t, strings.HasPrefix(err.Error(), `payload of variant "treatment" is not valid JSON: `), "error %q", err)
 				assert.Empty(t, out)
 			}
@@ -564,7 +563,7 @@ func evalAndRead(t *testing.T, script, name string) string {
 	t.Helper()
 	// $1 is the script, $2 the name. The child only sees exported variables.
 	const outer = `eval "$1" && exec /bin/sh -c 'eval "printf %s \"\${$0}\""' "$2"`
-	cmd := exec.Command("/bin/sh", "-c", outer, "sh", script, name)
+	cmd := exec.CommandContext(t.Context(), "/bin/sh", "-c", outer, "sh", script, name) //nolint:gosec // G204: the test evals generated shell output on purpose.
 	cmd.Env = []string{"PATH=/usr/bin:/bin", "HOME=/nonexistent"}
 	out, err := cmd.Output()
 	require.NoError(t, err)
@@ -583,7 +582,7 @@ func TestRenderInvalidPrefix(t *testing.T) {
 		t.Run(p, func(t *testing.T) {
 			out, err := variant.Render(p, variant.Shell, variant.Result{Variant: "a"})
 			require.Error(t, err)
-			assert.False(t, errors.Is(err, variant.ErrUnusable))
+			require.NotErrorIs(t, err, variant.ErrUnusable)
 			assert.Empty(t, out)
 		})
 	}
@@ -592,6 +591,6 @@ func TestRenderInvalidPrefix(t *testing.T) {
 func TestRenderUnknownFormat(t *testing.T) {
 	out, err := variant.Render(prefix, variant.Format("json"), variant.Result{Variant: "a"})
 	require.Error(t, err)
-	assert.False(t, errors.Is(err, variant.ErrUnusable))
+	require.NotErrorIs(t, err, variant.ErrUnusable)
 	assert.Empty(t, out)
 }

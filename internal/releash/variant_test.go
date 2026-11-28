@@ -359,7 +359,7 @@ func TestVariantKeepsANewlineInShell(t *testing.T) {
 }
 
 func TestVariantFallsBackWhenUnleashIsUnreachable(t *testing.T) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	ln, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	addr := ln.Addr().String()
 	require.NoError(t, ln.Close())
@@ -554,7 +554,7 @@ func TestVariantSendsUsageMetricsWithTheVariantBeforeReturning(t *testing.T) {
 }
 
 func TestVariantDoesNotWaitForMetricsAfterAFallbackOrExit6(t *testing.T) {
-	hang := func(w http.ResponseWriter, r *http.Request) { <-r.Context().Done() }
+	hang := func(_ http.ResponseWriter, r *http.Request) { <-r.Context().Done() }
 	features := func(t *testing.T) string {
 		return featuresJSON(
 			fakeFeature{Name: "off", Enabled: false, Strategies: []fakeStrategy{{Name: "default"}}}.encode(t),
@@ -647,7 +647,7 @@ func TestVariantOfADisabledFlagWithACommandLineErrorExitsWithTheLowerCode(t *tes
 	stdout, stderr, code := runVariant(t, url, "off", false, checkEdits(set(OptionTimeout, timeout, "abc")))
 
 	assert.Equal(t, ExitUsage, code, "exit code")
-	assert.Equal(t, "", stdout, "stdout")
+	assert.Empty(t, stdout, "stdout")
 	assert.Equal(t, "releash: invalid --timeout \"abc\": must be a positive Go duration, e.g. 5s\nRun 'releash variant --help' for usage.\n", stderr, "stderr")
 }
 
