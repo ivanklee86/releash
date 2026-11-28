@@ -590,20 +590,21 @@ func TestVariantValidation(t *testing.T) {
 		{name: "invalid --format", edits: []func(*VariantOptions){formats("json")}, wantCode: ExitUsage, wantStderr: "releash: invalid --format \"json\": must be one of \"dotenv\" or \"shell\"\n" + help},
 		{name: "--format in upper case", edits: []func(*VariantOptions){formats("SHELL")}, wantCode: ExitUsage, wantStderr: "releash: invalid --format \"SHELL\": must be one of \"dotenv\" or \"shell\"\n" + help},
 		{name: "empty --format", edits: []func(*VariantOptions){formats("")}, wantCode: ExitUsage, wantStderr: "releash: invalid --format \"\": must be one of \"dotenv\" or \"shell\"\n" + help},
-		{name: "--format twice with the same value", edits: []func(*VariantOptions){formats("shell", "shell")}, wantCode: ExitUsage, wantStdout: shellFalse, wantStderr: "releash: --format given 2 times; give it at most once\n" + help},
+		{name: "--format twice with the same value", edits: []func(*VariantOptions){formats("shell", "shell")}, wantCode: ExitUsage, wantStderr: "releash: --format given 2 times; give it at most once\n" + help},
 		{name: "--format twice with different values", edits: []func(*VariantOptions){formats("shell", "dotenv")}, wantCode: ExitUsage, wantStderr: "releash: --format given 2 times; give it at most once\n" + help},
 		{name: "empty --prefix", edits: []func(*VariantOptions){prefixes("")}, wantCode: ExitUsage, wantStderr: "releash: invalid --prefix \"\": must match ^[A-Z][A-Z0-9_]*$\n" + help},
 		{name: "lower-case --prefix", edits: []func(*VariantOptions){prefixes("app_")}, wantCode: ExitUsage, wantStderr: "releash: invalid --prefix \"app_\": must match ^[A-Z][A-Z0-9_]*$\n" + help},
 		{name: "--prefix starting with a digit", edits: []func(*VariantOptions){prefixes("1A")}, wantCode: ExitUsage, wantStderr: "releash: invalid --prefix \"1A\": must match ^[A-Z][A-Z0-9_]*$\n" + help},
 		{name: "--prefix starting with _", edits: []func(*VariantOptions){prefixes("_A")}, wantCode: ExitUsage, wantStderr: "releash: invalid --prefix \"_A\": must match ^[A-Z][A-Z0-9_]*$\n" + help},
 		{name: "--prefix with a dash", edits: []func(*VariantOptions){prefixes("A-B")}, wantCode: ExitUsage, wantStderr: "releash: invalid --prefix \"A-B\": must match ^[A-Z][A-Z0-9_]*$\n" + help},
-		{name: "--prefix twice with the same value", edits: []func(*VariantOptions){prefixes("P_", "P_")}, wantCode: ExitUsage, wantStdout: "P_ENABLED=false\nP_VARIANT=disabled\n", wantStderr: "releash: --prefix given 2 times; give it at most once\n" + help},
+		{name: "--prefix twice with the same value", edits: []func(*VariantOptions){prefixes("P_", "P_")}, wantCode: ExitUsage, wantStderr: "releash: --prefix given 2 times; give it at most once\n" + help},
 		{name: "--prefix twice with different values", edits: []func(*VariantOptions){prefixes("P_", "Q_")}, wantCode: ExitUsage, wantStderr: "releash: --prefix given 2 times; give it at most once\n" + help},
 		{name: "missing flag name", edits: []func(*VariantOptions){func(o *VariantOptions) { o.Flag = "" }}, wantCode: ExitUsage, wantStderr: "releash: missing flag name\n" + help},
-		{name: "missing flag name with --prefix", edits: []func(*VariantOptions){func(o *VariantOptions) { o.Flag = "" }, prefixes("P_")}, wantCode: ExitUsage, wantStdout: "P_ENABLED=false\nP_VARIANT=disabled\n", wantStderr: "releash: missing flag name\n" + help},
-		{name: "invalid --timeout", edits: []func(*VariantOptions){checkEdits(set(OptionTimeout, timeout, "abc"))}, wantCode: ExitUsage, wantStdout: dotenvFalse, wantStderr: "releash: invalid --timeout \"abc\": must be a positive Go duration, e.g. 5s\n" + help},
+		{name: "missing flag name with --prefix", edits: []func(*VariantOptions){func(o *VariantOptions) { o.Flag = "" }, prefixes("P_")}, wantCode: ExitUsage, wantStderr: "releash: missing flag name\n" + help},
+		{name: "invalid --timeout", edits: []func(*VariantOptions){checkEdits(set(OptionTimeout, timeout, "abc"))}, wantCode: ExitUsage, wantStderr: "releash: invalid --timeout \"abc\": must be a positive Go duration, e.g. 5s\n" + help},
 		{name: "missing token in shell", edits: []func(*VariantOptions){func(o *VariantOptions) { o.Token = "" }, formats("shell")}, wantCode: ExitNotConfigured, wantStdout: shellFalse, wantStderr: "releash: no Unleash API token: set UNLEASH_API_TOKEN or --token to a client API token\n"},
 		{name: "invalid --current-time in shell", edits: []func(*VariantOptions){checkEdits(set(OptionCurrentTime, currentTime, "tomorrow")), formats("shell")}, wantCode: ExitInvalid, wantStdout: shellFalse, wantStderr: "releash: invalid --current-time \"tomorrow\": must be an RFC 3339 timestamp\n"},
+		{name: "--env twice", edits: []func(*VariantOptions){checkEdits(twice(OptionEnv))}, wantCode: ExitDuplicate, wantStdout: dotenvFalse, wantStderr: "releash: --env given 2 times; give it at most once\n"},
 		{name: "--env twice under --prefix", edits: []func(*VariantOptions){checkEdits(twice(OptionEnv)), prefixes("P_")}, wantCode: ExitDuplicate, wantStdout: "P_ENABLED=false\nP_VARIANT=disabled\n", wantStderr: "releash: --env given 2 times; give it at most once\n"},
 		{name: "invalid --format and missing token exits 2", edits: []func(*VariantOptions){func(o *VariantOptions) { o.Token = "" }, formats("yaml")}, wantCode: ExitUsage, wantStderr: "releash: no Unleash API token: set UNLEASH_API_TOKEN or --token to a client API token\nreleash: invalid --format \"yaml\": must be one of \"dotenv\" or \"shell\"\n" + help},
 	}
@@ -642,7 +643,7 @@ func TestVariantOfADisabledFlagWithACommandLineErrorExitsWithTheLowerCode(t *tes
 	stdout, stderr, code := runVariant(t, url, "off", false, checkEdits(set(OptionTimeout, timeout, "abc")))
 
 	assert.Equal(t, ExitUsage, code, "exit code")
-	assert.Equal(t, "RELEASH_OFF_ENABLED=false\nRELEASH_OFF_VARIANT=disabled\n", stdout, "stdout")
+	assert.Equal(t, "", stdout, "stdout")
 	assert.Equal(t, "releash: invalid --timeout \"abc\": must be a positive Go duration, e.g. 5s\nRun 'releash variant --help' for usage.\n", stderr, "stderr")
 }
 

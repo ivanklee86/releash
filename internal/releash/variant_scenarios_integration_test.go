@@ -255,7 +255,7 @@ func TestVariantOfDisabledFlagFailsTheStep(t *testing.T) {
 
 	t.Run("with a command line error", func(t *testing.T) {
 		res := variantOf(t, "variant-disabled-everywhere", given(releash.OptionTimeout, "soon"))
-		assert.Equal(t, disabledVariant("RELEASH_VARIANT_DISABLED_EVERYWHERE_"), res.stdout)
+		assert.Empty(t, res.stdout, "a bad command line prints nothing")
 		assert.Equal(t, releash.ExitUsage, res.code, "the lower code wins")
 		assert.NotContains(t, res.stderr, "is disabled", "the flag is evaluated")
 	})

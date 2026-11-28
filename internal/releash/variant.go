@@ -49,22 +49,26 @@ type VariantOptions struct {
 //
 // Variant writes each problem it finds in opts to Err as a "releash: " line,
 // with or without opts.Loud, and returns the lowest exit code among them
-// without contacting Unleash; Out then gets the disabled variant if
-// VariantFallback finds a single format and prefix in opts, and nothing
-// otherwise. A valid invocation prints the evaluated variant and returns
-// ExitOK. It prints the disabled variant and returns ExitOK when Unleash
-// cannot answer, the flag is not in the fetched flags, the SDK cannot
-// evaluate it, or the payload cannot be printed in the format, and then says
-// why on Err under opts.Loud. When the flag is in the fetched flags and
-// disabled for the context, it prints the disabled variant, writes an error
-// naming releash check to Err with or without opts.Loud, and returns
-// ExitDisabled. Under opts.Loud it also writes the notes evaluation made,
-// such as a warning that the flag uses default stickiness while neither
-// --user-id nor --session-id is set. It finishes within its timeout.
+// without contacting Unleash; Out then gets nothing for ExitUsage (ADR 0008)
+// and the disabled variant for any other code. A valid invocation prints the
+// evaluated variant and returns ExitOK. It prints the disabled variant and
+// returns ExitOK when Unleash cannot answer, the flag is not in the fetched
+// flags, the SDK cannot evaluate it, or the payload cannot be printed in the
+// format, and then says why on Err under opts.Loud. When the flag is in the
+// fetched flags and disabled for the context, it prints the disabled
+// variant, writes an error naming releash check to Err with or without
+// opts.Loud, and returns ExitDisabled. Under opts.Loud it also writes the
+// notes evaluation made, such as a warning that the flag uses default
+// stickiness while neither --user-id nor --session-id is set. It finishes
+// within its timeout.
 func (r *Releash) Variant(opts VariantOptions) int {
 	req, format, prefix, problems := validateVariant(opts)
 	if code := r.reportProblems("variant", problems); code != ExitOK {
-		_, _ = io.WriteString(r.Out, VariantFallback([]string{opts.Flag}, opts.Formats, opts.Prefixes))
+		// Every problem with the flag name, format or prefix is ExitUsage, so
+		// on any other code format and prefix are the ones that were asked for.
+		if code != ExitUsage {
+			_, _ = io.WriteString(r.Out, variant.Fallback(prefix, format))
+		}
 		return code
 	}
 
@@ -86,11 +90,9 @@ func (r *Releash) Variant(opts VariantOptions) int {
 }
 
 // VariantFallback returns the disabled variant that releash variant prints
-// on a command line or configuration error, a recovered panic, or a valid
-// invocation whose answer falls back. flags are the positional arguments
-// after the command, and formats and prefixes every --format and --prefix
-// value in the order given; a --format or --prefix without a value counts as
-// the empty value.
+// after a recovered panic, when Variant may not have validated anything.
+// flags are the positional arguments after the command, and formats and
+// prefixes every --format and --prefix value in the order given.
 //
 // The format is dotenv without a --format, or the one every --format names.
 // The prefix is the one every --prefix names, or without a --prefix the

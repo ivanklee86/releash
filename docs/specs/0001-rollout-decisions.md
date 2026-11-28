@@ -95,7 +95,7 @@ Options fall into two groups, and the synopsis, `--help` and this spec always li
 - releash options control how releash connects and reports: `--url`, `--token`, `--timeout`, `--loud`. See [Configuration](#configuration) and [Output and exit codes](#output-and-exit-codes).
 - Context options set fields of the Unleash context the flag is evaluated against: `--env`, `--app-name`, `--user-id`, `--session-id`, `--remote-address`, `--current-time`, `--properties`. See [Evaluation context](#evaluation-context).
 
-The grouping is for readability only. Options from both groups may appear in any order on the command line.
+The grouping is for readability only. Options from both groups may appear in any order on the command line, before or after the command name and the flag name: `releash --loud check x` and `releash check x --loud` are the same check ([ADR 0008](../adrs/0008-leave-command-line-parsing-to-cobra.md)).
 
 ## Output and exit codes
 
@@ -109,7 +109,7 @@ Two exceptions apply. `--help` and `--version` are informational: they print hel
 |---|---|---|---|
 | 0 | Answer: the flag was evaluated, or releash fell back to `false` at runtime (see below) | `true` or `false` | nothing (details with `--loud`) |
 | 1 | Unexpected internal error, i.e. a bug in releash | `false` | error message |
-| 2 | Bad command line: unknown option, missing or extra arguments, an invalid `--timeout`, a releash option given twice | `false` | error message |
+| 2 | Bad command line: unknown option (also before the command name), missing or extra arguments, an invalid `--timeout`, a releash option given twice | `false` | error message |
 | 3 | No Unleash URL or API token configured, or configured as an empty string | `false` | error message |
 | 4 | Invalid context value, property name or Unleash URL | `false` | error message |
 | 5 | The same context field or property set more than once | `false` | error message |

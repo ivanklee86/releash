@@ -172,7 +172,7 @@ For this to work, create `repo` as a context field with stickiness enabled in Un
 
 ## Options
 
-Options go after the command name. `releash --loud check <flag>` is an error.
+Options can go before or after the command name: `releash --loud check <flag>` and `releash check <flag> --loud` are the same.
 
 | Option | Default | Description |
 |---|---|---|
@@ -207,7 +207,7 @@ These options set the [Unleash context](https://docs.getunleash.io/reference/unl
 | 5 | A context option or property given twice |
 | 6 | `variant` only: the flag is disabled for the context |
 
-On a non-zero exit, `check` still prints `false` and `variant` prints the disabled variant when it can tell which format and prefix you asked for. When there are several mistakes, the lowest code wins.
+On a non-zero exit, `check` still prints `false`. `variant` prints nothing on exit 2 and the disabled variant on every other non-zero exit. When there are several mistakes, the lowest code wins.
 
 ## CI examples
 
