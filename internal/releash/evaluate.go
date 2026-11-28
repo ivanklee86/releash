@@ -47,6 +47,10 @@ type outcome struct {
 	// "releash: " prefix and without the "; returning ..." ending that the
 	// command adds. It is empty for an evaluated answer.
 	fallback string
+	// alwaysReported says the fallback line is written to Err without
+	// --loud too. Only a flag that Unleash does not know sets it, because
+	// that is likely a typo in the flag name rather than an outage (ADR 0009).
+	alwaysReported bool
 	// notes are --loud lines, without the "releash: " prefix, about problems
 	// that did not change the answer, such as a rejected registration.
 	notes []string
@@ -211,9 +215,10 @@ func evaluateFlag(client *unleash.Client, req checkRequest) outcome {
 	return outcome{enabled: enabled}
 }
 
-// notFound is the fallback for a flag that is not in the fetched flags.
+// notFound is the fallback for a flag that is not in the fetched flags. It
+// is reported with or without --loud.
 func notFound(flag string) outcome {
-	return outcome{fallback: fmt.Sprintf("flag %q not found", flag)}
+	return outcome{fallback: fmt.Sprintf("flag %q not found", flag), alwaysReported: true}
 }
 
 // evaluationError returns the error the SDK reported while client evaluated

@@ -278,11 +278,15 @@ func TestDeployConfigFallsBackToTheDisabledVariant(t *testing.T) {
 		// minElapsed and maxElapsed bound each run, without --loud and with
 		// it. A zero maxElapsed means fastFallback.
 		minElapsed, maxElapsed time.Duration
+		// alwaysReported is set for the fallback whose line is written without
+		// --loud too (ADR 0009).
+		alwaysReported bool
 	}{
 		{
-			name:  "unknown flag",
-			setup: func(*testing.T) (string, []option) { return "no-such-flag", nil },
-			want:  `^releash: flag "no-such-flag" not found; returning disabled variant\n$`,
+			name:           "unknown flag",
+			setup:          func(*testing.T) (string, []option) { return "no-such-flag", nil },
+			alwaysReported: true,
+			want:           `^releash: flag "no-such-flag" not found; returning disabled variant\n$`,
 		},
 		{
 			name: "rejected token",
@@ -379,6 +383,10 @@ func TestDeployConfigFallsBackToTheDisabledVariant(t *testing.T) {
 			quiet := timed(opts...)
 			noisy := timed(append(opts, loud)...)
 
+			if tt.alwaysReported {
+				assert.Equal(t, noisy.stderr, quiet.stderr, "the same line without --loud")
+				quiet.stderr = ""
+			}
 			assertVariant(t, disabledVariant("F_"), quiet, "without --loud")
 			assert.Equal(t, quiet.stdout, noisy.stdout, "--loud changes stdout")
 			assert.Equal(t, quiet.code, noisy.code, "--loud changes the exit code")

@@ -32,12 +32,12 @@ The fallback covers runtime conditions only. Mistakes in the command or its conf
 
 * Good, because no runtime failure can turn a gate on.
 * Good, because `set -euo pipefail` scripts keep running during an Unleash outage.
-* Bad, because an expired token or a misspelled flag name silently skips the gated step until someone runs with `--loud`.
+* Bad, because an expired token silently skips the gated step until someone runs with `--loud`. A misspelled flag name did too, until [ADR 0009](0009-report-unknown-flag-without-loud.md) made releash report an unknown flag without `--loud`.
 * Bad, because releash must not evaluate against anything except a fresh response from Unleash. The SDK's default persistent backup file is disabled, since a stale backup evaluated `true` with a bad token in the 2026-11-27 spike.
 
 ### Confirmation
 
-Tests cover each fallback (unreachable server, unresponsive server, HTTP 401/403, unknown flag, malformed response): each prints `false`, exits 0, stays silent without `--loud`, and finishes within `--timeout`. A test also checks that after a successful check, a failing check still prints `false` and no files are written.
+Tests cover each fallback (unreachable server, unresponsive server, HTTP 401/403, unknown flag, malformed response): each prints `false`, exits 0, stays silent without `--loud` (apart from the unknown flag, see ADR 0009), and finishes within `--timeout`. A test also checks that after a successful check, a failing check still prints `false` and no files are written.
 
 ## Pros and Cons of the Options
 
@@ -59,4 +59,4 @@ Tests cover each fallback (unreachable server, unresponsive server, HTTP 401/403
 
 ## More Information
 
-See [spec 0001](../specs/0001-rollout-decisions.md), "Fallback to `false`".
+See [spec 0001](../specs/0001-rollout-decisions.md), "Fallback to `false`". Amended by [ADR 0009](0009-report-unknown-flag-without-loud.md) for a flag that Unleash does not know.

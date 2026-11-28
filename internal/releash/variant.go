@@ -54,7 +54,8 @@ type VariantOptions struct {
 // evaluated variant and returns ExitOK. It prints the disabled variant and
 // returns ExitOK when Unleash cannot answer, the flag is not in the fetched
 // flags, the SDK cannot evaluate it, or the payload cannot be printed in the
-// format, and then says why on Err under opts.Loud. When the flag is in the
+// format, and then says why on Err under opts.Loud, or for a flag that is not
+// in the fetched flags with or without it. When the flag is in the
 // fetched flags and disabled for the context, it prints the disabled
 // variant, writes an error naming releash check to Err with or without
 // opts.Loud, and returns ExitDisabled. Under opts.Loud it also writes the

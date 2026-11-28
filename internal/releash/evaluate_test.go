@@ -229,8 +229,11 @@ func TestCheckFallsBackToFalse(t *testing.T) {
 		features http.HandlerFunc
 		flag     string
 		wantLine string
+		// alwaysReported is set for the one fallback reported without --loud
+		// (ADR 0009); every other fallback is silent without it.
+		alwaysReported bool
 	}{
-		{name: "unknown flag", features: serve(http.StatusOK, featuresJSON(enabledFlag)), flag: "missing", wantLine: `releash: flag "missing" not found; returning false`},
+		{name: "unknown flag", features: serve(http.StatusOK, featuresJSON(enabledFlag)), flag: "missing", wantLine: `releash: flag "missing" not found; returning false`, alwaysReported: true},
 		{name: "401", features: serve(http.StatusUnauthorized, `{}`), wantLine: "releash: unleash rejected the API token (HTTP 401); returning false"},
 		{name: "403", features: serve(http.StatusForbidden, `{}`), wantLine: "releash: unleash rejected the API token (HTTP 403); returning false"},
 		{name: "500", features: serve(http.StatusInternalServerError, ``), wantLine: "releash: unleash answered the feature fetch with HTTP 500; returning false"},
@@ -254,7 +257,7 @@ func TestCheckFallsBackToFalse(t *testing.T) {
 				assert.Equal(t, ExitOK, code, "exit code")
 				assert.Equal(t, "false\n", stdout, "stdout")
 				switch {
-				case !loud:
+				case !loud && !tt.alwaysReported:
 					assert.Empty(t, stderr, "stderr")
 				case tt.wantLine == malformed:
 					// The rest of the line is the SDK's decode error.

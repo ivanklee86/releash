@@ -1,7 +1,7 @@
 - Feature Name: `check_command`
 - Start Date: 2026-11-26
 - Status: implemented
-- Related ADRs: [0001](../adrs/0001-read-only-by-design.md), [0002](../adrs/0002-client-api-over-frontend-api.md), [0003](../adrs/0003-fail-safe-false.md), [0004](../adrs/0004-exit-code-contract.md)
+- Related ADRs: [0001](../adrs/0001-read-only-by-design.md), [0002](../adrs/0002-client-api-over-frontend-api.md), [0003](../adrs/0003-fail-safe-false.md), [0004](../adrs/0004-exit-code-contract.md), [0009](../adrs/0009-report-unknown-flag-without-loud.md)
 
 # Summary
 
@@ -45,10 +45,10 @@ if [ "$(releash check deploy-payments)" = "true" ]; then
 fi
 ```
 
-releash exits 0 for every answer, including `false`, so `set -euo pipefail` is safe to use. If releash can't reach Unleash, the token is rejected, or the flag doesn't exist, it prints `false`. Add `--loud` to see why on stderr:
+releash exits 0 for every answer, including `false`, so `set -euo pipefail` is safe to use. If releash can't reach Unleash, the token is rejected, or the flag doesn't exist, it prints `false`. Add `--loud` to see why on stderr. A flag that doesn't exist is reported even without `--loud`, because it is usually a typo:
 
 ```sh
-$ releash check deploy-pament --loud
+$ releash check deploy-pament
 releash: flag "deploy-pament" not found; returning false
 false
 ```
@@ -131,7 +131,7 @@ releash prints `false` and exits 0 instead of printing an evaluated result when:
 - The flag does not exist, or the token cannot see it (e.g. it belongs to a project outside the token's scope). Unleash does not distinguish these.
 - The response cannot be parsed.
 
-These are conditions of the environment at the moment of the check, not mistakes in the command, so they exit 0 and leave the gated step off without failing the pipeline. With `--loud`, releash writes one line to stderr naming the reason, e.g. `releash: unleash unreachable: <error>; returning false`.
+These are conditions of the environment at the moment of the check, not mistakes in the command, so they exit 0 and leave the gated step off without failing the pipeline. With `--loud`, releash writes one line to stderr naming the reason, e.g. `releash: unleash unreachable: <error>; returning false`. A flag that Unleash does not know is the exception: it is likely a typo in the flag name or a flag that was archived or renamed, not an outage, so releash writes its line, `releash: flag "<flag>" not found; returning false`, with or without `--loud` ([ADR 0009](../adrs/0009-report-unknown-flag-without-loud.md)). Stdout and the exit code are the same as for any other fallback.
 
 ## Command and configuration errors
 
@@ -195,7 +195,7 @@ Options take precedence over environment variables. Prefer the environment varia
 - Happy path: an enabled flag prints `true`; a disabled flag prints `false`; both exit 0 and write nothing to stderr.
 - Context: `--properties region=eu` reaches evaluation, so a constraint on `region` gives different results for `eu` and `us`; each standard field option reaches evaluation; without options, `environment` is `production` and `appName` is `releash`; property values containing `=` are preserved.
 - Automatic values: without `--current-time`, a date constraint set just before and just after the check gives the expected results; without `--remote-address`, an IP strategy listing the runner's address enables the flag; `--remote-address` overrides the detected address.
-- Fallback: an unreachable server, an unresponsive server (one that accepts connections but never responds), HTTP 401/403, an unknown flag and a malformed response each print `false`, exit 0, are silent without `--loud`, and finish within `--timeout`.
+- Fallback: an unreachable server, an unresponsive server (one that accepts connections but never responds), HTTP 401/403, an unknown flag and a malformed response each print `false`, exit 0 and finish within `--timeout`; all but the unknown flag are silent without `--loud`, and the unknown flag writes its not-found line with or without it.
 - A flag the token cannot see is covered only by the unknown-flag case. The integration tests run against open-source Unleash, which has only the `default` project (its Admin API has no endpoint to create another), so they cannot put a flag outside the client tokens' scope. Unleash answers both cases the same way, by leaving the flag out of the Client API response.
 - No stale state: after a successful check, a second check with a bad token or an unreachable server prints `false`, and releash writes no files.
 - `--loud`: each fallback reason produces its own stderr line; stdout and the exit code are the same with and without `--loud`.
@@ -207,7 +207,7 @@ Options take precedence over environment variables. Prefer the environment varia
 
 # Drawbacks
 
-- Fallback to `false` hides problems. A typo in a flag name or an expired token silently skips the gated step until someone runs with `--loud`. This is deliberate: skipping a step is safer than running one by mistake, but teams should be aware of it.
+- Fallback to `false` hides problems. An expired token silently skips the gated step until someone runs with `--loud`. A typo in a flag name also skips it, but is reported on stderr without `--loud` ([ADR 0009](../adrs/0009-report-unknown-flag-without-loud.md)). This is deliberate: skipping a step is safer than running one by mistake, but teams should be aware of it.
 - Using the SDK means fetching every flag the token can see, not just the one being checked. That's fine for typical Unleash instances, but it is more data than a single-flag lookup.
 - The Go SDK is built for long-running services. A one-shot CLI has to work around several of its defaults: the persistent backup file, the HTTP client without a timeout, and metrics that are only sent on a timer.
 - Exit codes are lost in common shell forms such as `if [ "$(releash check x)" = "true" ]` and `echo "go=$(releash check x)" >> "$GITHUB_OUTPUT"`. In those forms a command or configuration error behaves like a `false` answer. The error message on stderr is the only signal there.
