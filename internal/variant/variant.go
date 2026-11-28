@@ -93,17 +93,20 @@ type Result struct {
 // Render returns the variables for r in format, one line each, each ending in
 // a newline, in the order of spec 0003: ENABLED, VARIANT, PAYLOAD, then the
 // flattened json payload variables sorted by name in byte order. Every name
-// starts with prefix, which the caller must have checked with ValidPrefix or
-// taken from DefaultPrefix.
+// starts with prefix.
 //
 // If the output cannot be printed, Render returns "" and an error matching
 // ErrUnusable whose message describes the problem, e.g. `payload of variant
 // "treatment" has colliding keys "a-b" and "a_b"`; the caller then prints
-// Fallback instead. An unknown format is an error that does not match
-// ErrUnusable.
+// Fallback instead. An unknown format or a prefix that ValidPrefix rejects is
+// an error that does not match ErrUnusable, because an unchecked prefix would
+// be shell code under eval.
 func Render(prefix string, format Format, r Result) (string, error) {
 	if _, ok := ParseFormat(string(format)); !ok {
 		return "", fmt.Errorf("unknown format %q", format)
+	}
+	if !ValidPrefix(prefix) {
+		return "", fmt.Errorf("invalid prefix %q: must match %s", prefix, PrefixPattern)
 	}
 	vars, err := variables(prefix, r)
 	if err != nil {
@@ -127,7 +130,7 @@ func Render(prefix string, format Format, r Result) (string, error) {
 // Fallback returns the disabled variant in format: ENABLED=false and
 // VARIANT=disabled under prefix, with no payload. It is what the variant
 // command prints when it has no evaluated variant to print. An unknown format
-// gives "".
+// or an invalid prefix gives "".
 func Fallback(prefix string, format Format) string {
 	out, err := Render(prefix, format, Result{Variant: DisabledVariant})
 	if err != nil {

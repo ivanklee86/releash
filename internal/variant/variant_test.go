@@ -265,6 +265,16 @@ func TestRenderFlattening(t *testing.T) {
 			want:    lines(append(head(`{"s":"café \"q\" a\/b \\ \t"}`), prefix+"PAYLOAD__S=café \"q\" a/b \\ \t")...),
 		},
 		{
+			// A surrogate pair and an escaped U+FFFD decode to what they say.
+			name:    "unicode escapes",
+			payload: `{"e": "😀", "r": "�", "s": "\\ud800"}`,
+			want: lines(append(head(`{"e":"😀","r":"�","s":"\\ud800"}`),
+				prefix+"PAYLOAD__E=😀",
+				prefix+"PAYLOAD__R=�",
+				prefix+`PAYLOAD__S=\ud800`,
+			)...),
+		},
+		{
 			name:    "member names normalised",
 			payload: `{"image-tag": 1, "log.level": 2, "max replicas": 3, "größe": 4, "camelCase": 5, "snake_case": 6, "9lives": 7}`,
 			want: lines(append(head(`{"image-tag":1,"log.level":2,"max replicas":3,"größe":4,"camelCase":5,"snake_case":6,"9lives":7}`),
@@ -409,6 +419,30 @@ func TestRenderInvalidJSON(t *testing.T) {
 	}
 }
 
+// encoding/json would turn each of these into U+FFFD, so a leaf or a member
+// name would differ from PAYLOAD.
+func TestRenderReplacedText(t *testing.T) {
+	tests := []struct {
+		name    string
+		payload string
+		want    string
+	}{
+		{"lone high surrogate", `{"tag": "v\ud800"}`, `payload of variant "treatment" has an unpaired surrogate escape \ud800`},
+		{"lone low surrogate", `{"tag": "\uDC00x"}`, `payload of variant "treatment" has an unpaired surrogate escape \uDC00`},
+		{"high surrogate before a non-surrogate escape", `{"tag": "\ud800A"}`, `payload of variant "treatment" has an unpaired surrogate escape \ud800`},
+		{"two high surrogates", `{"tag": "\ud800\ud800"}`, `payload of variant "treatment" has an unpaired surrogate escape \ud800`},
+		{"in a member name", `{"\ud800": 1, "\udbff": 2}`, `payload of variant "treatment" has an unpaired surrogate escape \ud800`},
+		{"invalid UTF-8", "{\"tag\": \"v\xff\"}", `payload of variant "treatment" is not valid UTF-8`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for _, format := range []variant.Format{variant.Dotenv, variant.Shell} {
+				requireUnusable(t, format, jsonResult(tt.payload), tt.want)
+			}
+		})
+	}
+}
+
 func TestRenderUnrepresentable(t *testing.T) {
 	str := func(v string) variant.Result {
 		return variant.Result{Enabled: true, Variant: "treatment", Payload: variant.Payload{Type: "string", Value: v}}
@@ -541,6 +575,18 @@ func TestFallback(t *testing.T) {
 	assert.Equal(t, lines("CHECKOUT_ENABLED=false", "CHECKOUT_VARIANT=disabled"), variant.Fallback("CHECKOUT_", variant.Dotenv))
 	assert.Equal(t, lines("export RELEASH_X_ENABLED='false'", "export RELEASH_X_VARIANT='disabled'"), variant.Fallback(variant.DefaultPrefix("x"), variant.Shell))
 	assert.Empty(t, variant.Fallback("CHECKOUT_", variant.Format("json")))
+	assert.Empty(t, variant.Fallback("X;id;", variant.Shell))
+}
+
+func TestRenderInvalidPrefix(t *testing.T) {
+	for _, p := range []string{"", "x_", "X;id;Y", "X=", "X\nY"} {
+		t.Run(p, func(t *testing.T) {
+			out, err := variant.Render(p, variant.Shell, variant.Result{Variant: "a"})
+			require.Error(t, err)
+			assert.False(t, errors.Is(err, variant.ErrUnusable))
+			assert.Empty(t, out)
+		})
+	}
 }
 
 func TestRenderUnknownFormat(t *testing.T) {

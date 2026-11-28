@@ -6,6 +6,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode/utf16"
+	"unicode/utf8"
 )
 
 // flatten parses a json payload and returns it as compact JSON, with one
@@ -19,6 +21,9 @@ func flatten(variant, payload string) (string, []variable, error) {
 	if err := json.Compact(&compact, []byte(payload)); err != nil {
 		return "", nil, unusable("payload of variant %q is not valid JSON: %v", variant, err)
 	}
+	if err := checkText(variant, payload); err != nil {
+		return "", nil, err
+	}
 
 	dec := json.NewDecoder(strings.NewReader(payload))
 	dec.UseNumber()
@@ -28,6 +33,46 @@ func flatten(variant, payload string) (string, []variable, error) {
 	}
 	slices.SortFunc(f.leaves, func(a, b variable) int { return strings.Compare(a.name, b.name) })
 	return compact.String(), f.leaves, nil
+}
+
+// checkText rejects text that encoding/json would silently replace with
+// U+FFFD when it decodes a string: invalid UTF-8, and a \u escape of a UTF-16
+// surrogate that is not part of a pair. Without it a leaf, or a member name,
+// would differ from what PAYLOAD shows. payload must be valid JSON, so every
+// backslash starts an escape inside a string and every \u has four hex digits.
+func checkText(variant, payload string) error {
+	if !utf8.ValidString(payload) {
+		return unusable("payload of variant %q is not valid UTF-8", variant)
+	}
+	for i := 0; i < len(payload); i++ {
+		if payload[i] != '\\' {
+			continue
+		}
+		i++
+		if payload[i] != 'u' {
+			continue
+		}
+		escape := payload[i-1 : i+5]
+		r := hex4(payload[i+1 : i+5])
+		i += 4
+		if !utf16.IsSurrogate(r) {
+			continue
+		}
+		if r < 0xDC00 && strings.HasPrefix(payload[i+1:], `\u`) {
+			if low := hex4(payload[i+3 : i+7]); low >= 0xDC00 && low <= 0xDFFF {
+				i += 6
+				continue
+			}
+		}
+		return unusable("payload of variant %q has an unpaired surrogate escape %s", variant, escape)
+	}
+	return nil
+}
+
+// hex4 returns the code unit written as four hex digits in s.
+func hex4(s string) rune {
+	n, _ := strconv.ParseUint(s, 16, 16)
+	return rune(n)
 }
 
 // flattener walks a payload that json.Compact has already accepted, token by
