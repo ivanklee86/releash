@@ -5,7 +5,7 @@ linters:
   # explicitly so a golangci-lint upgrade doesn't silently change what CI enforces.
   default: standard
   enable:
-    # Doc comments on every exported identifier, starting with its name (AGENTS.md, Go Doc Comments).
+    # Doc comments on every exported identifier, starting with its name (CLAUDE.md, Go Doc Comments).
     - revive
     # errors.Is and errors.As instead of == and type assertions on wrapped errors (Uber guide).
     - errorlint

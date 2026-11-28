@@ -42,3 +42,18 @@ repos:
       - id: renovate-config-validator
         # Without --no-global it checks renovate.json as self-hosted global config, not repo config.
         args: [--strict, --no-global]
+
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.11.0.1
+    hooks:
+      - id: shellcheck
+
+  # Needs jq and golangci-lint; CI runs it in the lint job instead (task claude:test-hooks).
+  - repo: local
+    hooks:
+      - id: claude-hooks
+        name: claude hook tests
+        entry: bash .claude/hooks/test.sh
+        language: system
+        files: ^\.claude/hooks/
+        pass_filenames: false

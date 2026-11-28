@@ -1,0 +1,8 @@
+# https://taskfile.dev
+version: '3'
+
+tasks:
+  test-hooks:
+    desc: Test the Claude Code hooks in .claude/hooks. Needs jq and golangci-lint.
+    cmds:
+      - bash .claude/hooks/test.sh

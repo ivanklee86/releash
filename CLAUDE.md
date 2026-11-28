@@ -1,4 +1,4 @@
-# AGENTS
+# CLAUDE
 
 ## Links
 
@@ -22,8 +22,7 @@
 
 - Follow the [Google Go Style Guide](https://google.github.io/styleguide/go/) (Guide, Decisions, and Best Practices).
 - Where the Google guide is silent or ambiguous, especially on concurrency and error handling, use the [Uber Go Style Guide](https://github.com/uber-go/guide/blob/master/style.md) as the tie-breaker.
-- Structure the module per [Organizing a Go module](https://go.dev/doc/modules/layout)
-- Enforce style with [`golangci-lint`](https://golangci-lint.run/) (including `gofmt`/`goimports`, `go vet`, and `staticcheck`), with its version pinned.
+- Structure the module per [Organizing a Go module](https://go.dev/doc/modules/layout). `.golangci.yml` enforces what a linter can check.
 
 ### Comments
 
