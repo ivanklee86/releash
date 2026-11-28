@@ -1,10 +1,10 @@
 # Plan: variant variables
 
-Started 2026-11-27. Status: in progress.
+Started 2026-11-27. Status: done.
 
 ## Resume here
 
-Updated 2026-11-27. The spec was first written after M2, before M3 to M5 built the `check` command, evaluation and releases. It has been reworked against that code (see [Rework after M5](#rework-after-m5)), so spec [0003](../../specs/0003-variant-variables.md) is back to `draft` and ADRs [0006](../../adrs/0006-variant-variable-names.md) and [0007](../../adrs/0007-refuse-variant-of-disabled-flag.md) to `proposed`, for the user to re-accept. ADR 0004 lists exit 6. Milestone [M6](../milestones/M6-variant-variables.md) is `planned`. Next: the user reviews the rework; once accepted, set spec 0003 to `accepted` and the ADRs to `accepted`, then start M6 with the spike against Unleash 8.3.1 and an M6 implementation plan.
+Updated 2026-11-27. This plan is done. The spec was first written after M2, before M3 to M5 built the `check` command, evaluation and releases, and was then reworked against that code (see [Rework after M5](#rework-after-m5)). The user accepted the rework by merging #26 and asking to start M6, so spec [0003](../../specs/0003-variant-variables.md) and ADRs [0006](../../adrs/0006-variant-variable-names.md) and [0007](../../adrs/0007-refuse-variant-of-disabled-flag.md) are `accepted`, ADR 0004's exit 6 is in effect, and milestone [M6](../milestones/M6-variant-variables.md) is `active`. The spike against Unleash 8.3.1 has run. Implementation continues in the [M6 plan](2026-11-27-m6-variant-variables.md), which records the spike findings.
 
 ## Goal
 
@@ -42,9 +42,7 @@ None.
 
 ## Next steps
 
-- The user re-accepts spec 0003 and ADRs 0006 and 0007, or asks for changes.
-- Spike `GetVariant` against Unleash 8.3.1: strategy variants, every payload type as the Client API returns it, and the stickiness fields. Reading the SDK already settled the unknown-versus-disabled question and the variant metrics (see below).
-- Write the M6 implementation plan. M6 lands after M5, as the minor release `v0.2.0`.
+None in this plan. The user re-accepted spec 0003 and ADRs 0006 and 0007, the spike against Unleash 8.3.1 has run, and the [M6 plan](2026-11-27-m6-variant-variables.md) takes over. M6 lands after M5, as the minor release `v0.2.0`.
 
 ## Rework after M5
 
