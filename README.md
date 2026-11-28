@@ -7,12 +7,10 @@
 [![Release](https://img.shields.io/github/v/release/ivanklee86/releash)](https://github.com/ivanklee86/releash/releases/latest)
 [![License: MPL 2.0](https://img.shields.io/badge/license-MPL%202.0-brightgreen.svg)](LICENSE)
 
-A small CLI that lets CI/CD pipelines read [Unleash](https://www.getunleash.io/) feature flags.
+A small CLI that lets CI/CD pipelines read [Unleash](https://www.getunleash.io/) feature flags. 🏁🏁🏁
 
 - `releash check <flag>` prints `true` or `false`, so a pipeline can gate a step on a flag.
 - `releash variant <flag>` prints the flag's variant and payload as environment variables, so a pipeline can configure the step behind the gate.
-
-releash is read-only. It evaluates flags with the official Unleash Go SDK and never changes anything in Unleash.
 
 ## Install
 
