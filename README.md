@@ -19,7 +19,7 @@ Pin an exact version in pipelines. To check signatures before you run a download
 ### Binary
 
 ```sh
-VERSION=0.2.0
+VERSION=0.3.0
 curl -sSfL "https://github.com/ivanklee86/releash/releases/download/v${VERSION}/releash_${VERSION}_linux_amd64.tar.gz" | tar -xz releash
 ./releash --version
 ```
@@ -35,13 +35,13 @@ brew install ivanklee86/tap/releash
 ### Go
 
 ```sh
-go install github.com/ivanklee86/releash@v0.2.0
+go install github.com/ivanklee86/releash@v0.3.0
 ```
 
 ### Container image
 
 ```sh
-docker run --rm -e UNLEASH_URL -e UNLEASH_API_TOKEN ghcr.io/ivanklee86/releash:0.2.0 check deploy-payments
+docker run --rm -e UNLEASH_URL -e UNLEASH_API_TOKEN ghcr.io/ivanklee86/releash:0.3.0 check deploy-payments
 ```
 
 The image supports `linux/amd64` and `linux/arm64`. Tags are exact versions, and `latest` for releases that are not prereleases.
@@ -226,7 +226,7 @@ jobs:
     permissions:
       contents: read
     env:
-      RELEASH_VERSION: 0.2.0
+      RELEASH_VERSION: 0.3.0
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -295,7 +295,7 @@ Releases are signed with [cosign](https://docs.sigstore.dev/cosign/system_config
 Check that `checksums.txt` was signed by the release workflow for that tag, then that the archive matches it:
 
 ```sh
-VERSION=0.2.0
+VERSION=0.3.0
 BASE=https://github.com/ivanklee86/releash/releases/download/v${VERSION}
 
 curl -sSfLO "${BASE}/releash_${VERSION}_linux_amd64.tar.gz"
@@ -320,7 +320,7 @@ In GitHub Actions, install cosign with [`sigstore/cosign-installer`](https://git
 Resolve the tag to a digest, verify the digest, then run the digest. A tag can move, a digest cannot.
 
 ```sh
-VERSION=0.2.0
+VERSION=0.3.0
 IMAGE=ghcr.io/ivanklee86/releash
 IDENTITY="https://github.com/ivanklee86/releash/.github/workflows/release.yaml@refs/tags/v${VERSION}"
 
