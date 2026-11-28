@@ -15,8 +15,15 @@ active=$(jq -r '.stop_hook_active // false')
 cd "${CLAUDE_PROJECT_DIR:-.}"
 
 stamp="$(git rev-parse --git-dir)/claude-stop-check"
+# The state covers HEAD, tracked changes (--binary, so binary edits count) and
+# the contents of untracked files, which neither status nor diff includes.
 state() {
-  { git rev-parse HEAD 2>/dev/null || true; git status --porcelain=v1 --untracked-files=all; git diff HEAD 2>/dev/null || true; } | sha256sum | cut -d' ' -f1
+  {
+    git rev-parse HEAD 2>/dev/null || true
+    git status --porcelain=v1 --untracked-files=all
+    git diff --binary HEAD 2>/dev/null || true
+    git ls-files --others --exclude-standard -z | xargs -0 -r sha256sum
+  } | sha256sum | cut -d' ' -f1
 }
 
 if [[ -f "${stamp}" && "$(cat "${stamp}")" == "$(state)" ]]; then

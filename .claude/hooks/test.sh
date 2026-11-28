@@ -29,7 +29,19 @@ for cmd in \
   "gh pr merge 42 --squash" \
   "git fetch; gh pr merge" \
   "gh api -X PUT repos/ivanklee86/releash/pulls/42/merge" \
-  "gh api graphql -f query='mutation { mergePullRequest(input: {}) { clientMutationId } }'"; do
+  "gh api graphql -f query='mutation { mergePullRequest(input: {}) { clientMutationId } }'" \
+  "go test ./... & task services:down" \
+  "(task services:down)" \
+  "{ task services:down; }" \
+  "env task services:down" \
+  "sudo -E task services:down" \
+  "FOO=\"a b\" task services:down" \
+  "bash -c 'gh pr merge 42'" \
+  "echo \$(gh pr merge 42)" \
+  "docker compose rm --stop --force --volumes" \
+  "docker compose rm -sfv" \
+  "docker volume rm releash_db-data" \
+  "docker volume prune -f"; do
   [[ "$(decision Bash "${cmd}")" == "deny" ]] || fail "guard.sh should deny: ${cmd}"
 done
 
@@ -44,7 +56,10 @@ for cmd in \
   "gh api repos/ivanklee86/releash/pulls/42" \
   "git push origin main" \
   "git push origin v0.3.0" \
-  "echo services:down"; do
+  "echo services:down" \
+  "docker compose rm --stop --force seed" \
+  "docker volume ls" \
+  "env | sort"; do
   [[ "$(decision Bash "${cmd}")" == "allow" ]] || fail "guard.sh should allow: ${cmd}"
 done
 
@@ -70,7 +85,7 @@ edit "${tmp}/notes.txt" >/dev/null
 
 printf 'package x\nfunc {\n' >"${tmp}/broken.go"
 out=$(edit "${tmp}/broken.go") || fail "format-go.sh should not fail on a broken file"
-[[ "$(jq -r '.hookSpecificOutput.additionalContext // empty' <<<"${out}")" == *"golangci-lint fmt failed"* ]] ||
+[[ "$(jq -r '.hookSpecificOutput.additionalContext // empty' <<<"${out}")" == *"does not parse"* ]] ||
   fail "format-go.sh should report a broken file as context"
 
 # stop-check.sh: runs the checks only when the tree changed, blocks once on a
@@ -93,6 +108,11 @@ stop false false || code=$?
 [[ "${code}" == 2 ]] || fail "stop-check.sh should block (exit 2) on a failure, got ${code}"
 stop true false || fail "stop-check.sh should not block a second time"
 stop false true || fail "stop-check.sh should pass once the checks pass again"
+# The file is still untracked, so only its contents change here.
+echo more >>"${repo}/file"
+code=0
+stop false false || code=$?
+[[ "${code}" == 2 ]] || fail "stop-check.sh should run the checks after an untracked file changes, got ${code}"
 
 if [[ "${failures}" -gt 0 ]]; then
   echo "${failures} hook test(s) failed"

@@ -4,7 +4,7 @@ description: Prepare or publish a releash release - draft the notes, pin the REA
 argument-hint: "[version, e.g. 0.3.0]"
 model: fable
 disable-model-invocation: true
-allowed-tools: Bash(git *) Bash(gh *) Bash(docker *) Bash(curl *) Bash(sha256sum *) Bash(tar *) Bash(jq *) Bash(go install *) Bash(mktemp *)
+allowed-tools: Bash(git *) Bash(gh *) Bash(task *) Bash(prek *) Bash(docker *) Bash(curl *) Bash(sha256sum *) Bash(tar *) Bash(jq *) Bash(go install *) Bash(mktemp *)
 ---
 
 # Release releash
@@ -45,7 +45,7 @@ Stop and explain at the first check that fails. Never merge a pull request, neve
 
 Running `/release` after the release pull request is merged is the user's go to publish.
 
-1. Check: `git fetch --tags`, `main` is up to date, its head is the merge commit of the `Release v<version>` pull request, the tag does not exist locally or on `origin`, and the CI run on that commit succeeded. Wait for CI if it is still running.
+1. Check: `git fetch --tags`, the merge commit of the `Release v<version>` pull request is on `origin/main` (later merges are fine; the tag goes on the release merge, not on `main`'s head), the tag does not exist locally or on `origin`, and the CI run on that commit succeeded. Wait for CI if it is still running.
 2. Create the annotated tag and push it: `git tag -a v<version> -m "releash v<version>" <merge commit>` and `git push origin v<version>`.
 3. Watch the release workflow. Find its run with `gh run list --workflow release.yaml --branch v<version>`, then `gh run watch <id> --exit-status`. If any step fails, stop: report which step failed with the end of its log (`gh run view <id> --log-failed`). Do not re-run it, because goreleaser would run against assets that already exist. The fix is a new version (see "Release pipeline" in `docs/architecture.md`).
 4. Verify in a new directory from `mktemp -d`, with the commands from the README's "Verify a release". cosign is not installed in the devcontainer, so run it from its image, pinned to the `COSIGN_VERSION` in `.github/workflows/release.yaml` (for example `docker run --rm -v "$PWD:/w" -w /w ghcr.io/sigstore/cosign/cosign:<COSIGN_VERSION> ...`). The identity is `https://github.com/ivanklee86/releash/.github/workflows/release.yaml@refs/tags/v<version>` and the issuer `https://token.actions.githubusercontent.com`. Check each of these and record the result:

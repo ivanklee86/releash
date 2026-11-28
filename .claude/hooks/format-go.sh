@@ -10,9 +10,15 @@ file=$(jq -r '.tool_input.file_path // empty')
 
 # Run from the project root so golangci-lint finds .golangci.yml.
 cd "${CLAUDE_PROJECT_DIR:-.}"
-# golangci-lint fmt exits 0 on a file it cannot parse and only prints a
-# warning, so any output counts as a failure.
-if ! out=$(golangci-lint fmt "${file}" 2>&1) || [[ -n "${out}" ]]; then
-  jq -n --arg msg "golangci-lint fmt failed on ${file}: ${out}" \
-    '{hookSpecificOutput: {hookEventName: "PostToolUse", additionalContext: $msg}}'
+report() {
+  jq -n --arg msg "$1" '{hookSpecificOutput: {hookEventName: "PostToolUse", additionalContext: $msg}}'
+  exit 0
+}
+# golangci-lint fmt exits 0 on a file it cannot parse, so gofmt checks that
+# first.
+if ! out=$(gofmt -e -l "${file}" 2>&1 >/dev/null); then
+  report "${file} does not parse, so it was not formatted: ${out}"
+fi
+if ! out=$(golangci-lint fmt "${file}" 2>&1); then
+  report "golangci-lint fmt failed on ${file}: ${out}"
 fi
