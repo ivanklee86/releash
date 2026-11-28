@@ -92,7 +92,8 @@ out=$(edit "${tmp}/broken.go") || fail "format-go.sh should not fail on a broken
 # failure, and does not block a second time.
 repo="${tmp}/repo"
 git init -q "${repo}"
-git -C "${repo}" -c user.name=t -c user.email=t@example.com commit -q --allow-empty -m init
+# The throwaway commit must not depend on the developer's signing setup.
+git -C "${repo}" -c user.name=t -c user.email=t@example.com -c commit.gpgsign=false commit -q --allow-empty -m init
 
 stop() {
   local active=$1 cmd=$2
