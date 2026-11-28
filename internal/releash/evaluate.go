@@ -43,10 +43,15 @@ type outcome struct {
 	// false whenever fallback is set.
 	refused bool
 	// fallback says why the answer fell back to false, or to the disabled
-	// variant, instead of being evaluated, as a --loud line without the
+	// variant, instead of being evaluated, as a line for Err without the
 	// "releash: " prefix and without the "; returning ..." ending that the
-	// command adds. It is empty for an evaluated answer.
+	// command adds. It is written under --loud, or always when alwaysReported
+	// is set. It is empty for an evaluated answer.
 	fallback string
+	// alwaysReported says the fallback line is written to Err without
+	// --loud too. Only a flag that Unleash does not know sets it, because
+	// that is likely a typo in the flag name rather than an outage (ADR 0009).
+	alwaysReported bool
 	// notes are --loud lines, without the "releash: " prefix, about problems
 	// that did not change the answer, such as a rejected registration.
 	notes []string
@@ -206,14 +211,22 @@ func evaluateFlag(client *unleash.Client, req checkRequest) outcome {
 		},
 	})
 	if !found {
-		return notFound(req.flag)
+		return notFound(req.flag, len(client.ListFeatures()))
 	}
 	return outcome{enabled: enabled}
 }
 
-// notFound is the fallback for a flag that is not in the fetched flags.
-func notFound(flag string) outcome {
-	return outcome{fallback: fmt.Sprintf("flag %q not found", flag)}
+// notFound is the fallback for a flag that is not in the fetched flags;
+// fetched is how many flags Unleash sent. It is reported with or without
+// --loud (ADR 0009). When Unleash sent no flags at all, the cause is more
+// likely the token's project or environment than a typo, so the line says
+// so.
+func notFound(flag string, fetched int) outcome {
+	msg := fmt.Sprintf("flag %q not found", flag)
+	if fetched == 0 {
+		msg += " (unleash returned no flags for this token's project and environment)"
+	}
+	return outcome{fallback: msg, alwaysReported: true}
 }
 
 // evaluationError returns the error the SDK reported while client evaluated

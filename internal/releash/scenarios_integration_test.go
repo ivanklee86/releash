@@ -159,7 +159,14 @@ func TestDeployGateStaysClosedWhenTokenIsRejected(t *testing.T) {
 func TestDeployGateStaysClosedForUnknownFlag(t *testing.T) {
 	integration.RequireUnleash(t)
 
-	assertFallback(t, "no-such-flag", `releash: flag "no-such-flag" not found; returning false`)
+	const line = "releash: flag \"no-such-flag\" not found; returning false\n"
+	// A typo in the flag name is reported without --loud too (ADR 0009).
+	for _, opts := range [][]option{nil, {loud}} {
+		res := check(t, "no-such-flag", opts...)
+		assert.Equal(t, "false\n", res.stdout)
+		assert.Equal(t, releash.ExitOK, res.code)
+		assert.Equal(t, line, res.stderr)
+	}
 }
 
 func TestDeployGateStaysClosedWhenUnleashIsUnreachable(t *testing.T) {
@@ -210,6 +217,9 @@ func TestLoudExplainsWhyTheGateStayedClosed(t *testing.T) {
 		flag string
 		// want is a regular expression for the one --loud line.
 		want string
+		// alwaysReported is set for the fallback whose line is written without
+		// --loud too (ADR 0009).
+		alwaysReported bool
 	}{
 		{
 			name: "unreachable",
@@ -245,10 +255,11 @@ func TestLoudExplainsWhyTheGateStayedClosed(t *testing.T) {
 			want: `^releash: unleash sent a malformed feature response: .+; returning false\n$`,
 		},
 		{
-			name: "unknown flag",
-			opts: func(*testing.T) []option { return nil },
-			flag: "no-such-flag",
-			want: `^releash: flag "no-such-flag" not found; returning false\n$`,
+			name:           "unknown flag",
+			opts:           func(*testing.T) []option { return nil },
+			flag:           "no-such-flag",
+			alwaysReported: true,
+			want:           `^releash: flag "no-such-flag" not found; returning false\n$`,
 		},
 	}
 	seen := map[string]string{}
@@ -263,6 +274,10 @@ func TestLoudExplainsWhyTheGateStayedClosed(t *testing.T) {
 			quiet := check(t, flag, opts...)
 			noisy := check(t, flag, append(opts, loud)...)
 
+			if tt.alwaysReported {
+				assert.Equal(t, noisy.stderr, quiet.stderr, "the same line without --loud")
+				quiet.stderr = ""
+			}
 			assertAnswer(t, false, quiet, "without --loud")
 			assert.Equal(t, quiet.stdout, noisy.stdout, "--loud changes stdout")
 			assert.Equal(t, quiet.code, noisy.code, "--loud changes the exit code")

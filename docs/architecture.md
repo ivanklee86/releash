@@ -96,7 +96,7 @@ flowchart TD
     enabled -- "no" --> refused["Disabled variant<br/>exit 6"]
 ```
 
-The fallback answer is `false` for `check` and the disabled variant for `variant`, except that `variant` prints nothing on exit 2, a bad command line ([ADR 0008](adrs/0008-leave-command-line-parsing-to-cobra.md)). `--loud` explains a fallback on stderr. An internal error in releash, such as a recovered panic, also prints the fallback answer and exits 1.
+The fallback answer is `false` for `check` and the disabled variant for `variant`, except that `variant` prints nothing on exit 2, a bad command line ([ADR 0008](adrs/0008-leave-command-line-parsing-to-cobra.md)). `--loud` explains a fallback on stderr. A flag that Unleash does not know is explained without `--loud` too, because it is usually a typo ([ADR 0009](adrs/0009-report-unknown-flag-without-loud.md)). An internal error in releash, such as a recovered panic, also prints the fallback answer and exits 1.
 
 ## Release pipeline
 
@@ -144,3 +144,4 @@ Signatures are tied to the workflow's identity through GitHub's OIDC token, so t
 | Variant variable names follow fixed rules | [ADR 0006](adrs/0006-variant-variable-names.md) |
 | `variant` refuses a disabled flag | [ADR 0007](adrs/0007-refuse-variant-of-disabled-flag.md) |
 | cobra alone parses the command line, and `variant` prints nothing on exit 2 | [ADR 0008](adrs/0008-leave-command-line-parsing-to-cobra.md) |
+| An unknown flag is reported without `--loud` | [ADR 0009](adrs/0009-report-unknown-flag-without-loud.md) |

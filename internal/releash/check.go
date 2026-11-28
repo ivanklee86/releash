@@ -134,9 +134,11 @@ type problem struct {
 // not depend on validation order; the answer is then false and Unleash is not
 // contacted. A valid invocation returns ExitOK, also when the answer falls
 // back to false because Unleash could not give one (spec 0001), and finishes
-// within its timeout. It writes nothing to Err unless opts.Loud is set, and
-// then one line for each problem that did not change the answer and one for
-// the reason the answer fell back to false.
+// within its timeout. Under opts.Loud it writes one line to Err for each
+// problem that did not change the answer and one for the reason the answer
+// fell back to false. A flag that is not in the fetched flags gets its line
+// without opts.Loud too (ADR 0009); otherwise a valid invocation writes
+// nothing to Err.
 func (r *Releash) Check(opts CheckOptions) int {
 	req, problems := validateCheck(opts)
 	if code := r.reportProblems("check", problems); code != ExitOK {
@@ -178,15 +180,15 @@ func (r *Releash) evaluateRequest(req checkRequest) outcome {
 }
 
 // reportOutcome writes the notes of out under --loud, then the fallback line,
-// which ends by saying the command is returning answer.
+// which ends by saying the command is returning answer. The fallback line is
+// written without --loud too when out.alwaysReported is set.
 func (r *Releash) reportOutcome(req checkRequest, out outcome, answer string) {
-	if !req.loud {
-		return
+	if req.loud {
+		for _, note := range out.notes {
+			_, _ = fmt.Fprintf(r.Err, "releash: %s\n", note)
+		}
 	}
-	for _, note := range out.notes {
-		_, _ = fmt.Fprintf(r.Err, "releash: %s\n", note)
-	}
-	if out.fallback != "" {
+	if out.fallback != "" && (req.loud || out.alwaysReported) {
 		_, _ = fmt.Fprintf(r.Err, "releash: %s; returning %s\n", out.fallback, answer)
 	}
 }

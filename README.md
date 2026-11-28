@@ -67,10 +67,12 @@ releash check <flag> [options]
 
 `check` always prints exactly `true` or `false` on stdout and exits 0 for either answer, so it is safe under `set -e`.
 
-It fails safe. If Unleash is unreachable, too slow, rejects the token, sends an unreadable response or does not know the flag, `check` prints `false` and exits 0. The gated step stays off and the pipeline keeps going. Add `--loud` to see the reason on stderr:
+It fails safe. If Unleash is unreachable, too slow, rejects the token, sends an unreadable response or does not know the flag, `check` prints `false` and exits 0. The gated step stays off and the pipeline keeps going. Add `--loud` to see the reason on stderr.
+
+A flag that Unleash does not know is usually a typo, or a flag that was archived or renamed, so `check` reports it on stderr even without `--loud`. stdout and the exit code stay the same:
 
 ```console
-$ releash check deploy-pament --loud
+$ releash check deploy-pament
 releash: flag "deploy-pament" not found; returning false
 false
 ```
@@ -199,7 +201,7 @@ These options set the [Unleash context](https://docs.getunleash.io/reference/unl
 
 | Exit | Meaning |
 |---|---|
-| 0 | An answer, including the fail-safe `false` or disabled variant |
+| 0 | An answer, including the fail-safe `false` or disabled variant. A flag that Unleash does not know also writes `flag "<flag>" not found` to stderr, with or without `--loud`. |
 | 1 | Internal error in releash |
 | 2 | Bad command line: unknown option, missing or extra arguments, an invalid `--timeout`, `--format` or `--prefix`, or one of the non-context options given twice |
 | 3 | Missing or empty Unleash URL or API token |

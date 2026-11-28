@@ -345,8 +345,9 @@ func TestBindFlags(t *testing.T) {
 //   - invalid context values exit 4, repeated context options exit 5
 //   - defaults are not duplicates, property values keep '=' and commas
 //   - the lowest exit code wins
-//   - every exit prints exactly "false\n" (valid cases check the unknown flag
-//     x against a fake Unleash), and --loud never changes stdout, the exit
+//   - every exit prints exactly "false\n"; valid cases check the unknown flag
+//     x against a fake Unleash, which writes its not-found line to stderr
+//     with or without --loud; --loud never changes stdout, the exit
 //     code or the error lines
 //   - an enabled flag prints "true\n" and nothing on stderr, even with --loud
 //   - --help shows releash options, then context options
@@ -484,7 +485,9 @@ func TestCheckCommand(t *testing.T) {
 				assert.Equal(t, tt.wantCode, code, "exit code")
 				assert.Equal(t, "false\n", stdout.String(), "stdout")
 				wantStderr := tt.wantStderr
-				if suffix != "" && tt.wantCode == releash.ExitOK {
+				// Valid cases check the unknown flag x, whose not-found line is
+				// written with or without --loud (ADR 0009).
+				if tt.wantCode == releash.ExitOK && wantStderr == "" {
 					wantStderr = loudLine
 				}
 				if tt.wantStderrPrefix != "" {
@@ -697,7 +700,9 @@ func TestVariantCommand(t *testing.T) {
 				assert.Equal(t, tt.wantCode, code, "exit code")
 				assert.Equal(t, tt.wantStdout, stdout.String(), "stdout")
 				wantStderr := tt.wantStderr
-				if suffix != "" && tt.wantCode == releash.ExitOK {
+				// Valid cases check the unknown flag x, whose not-found line is
+				// written with or without --loud (ADR 0009).
+				if tt.wantCode == releash.ExitOK && wantStderr == "" {
 					wantStderr = variantLoud
 				}
 				assert.Equal(t, wantStderr, stderr.String(), "stderr")
@@ -891,4 +896,30 @@ func TestRootIgnoresSharedOptionsFromTheEnvironment(t *testing.T) {
 	assert.Equal(t, releash.ExitOK, code, "exit code")
 	assert.Contains(t, stdout.String(), "Usage:", "stdout")
 	assert.Empty(t, stderr.String(), "stderr")
+}
+
+// A flag that Unleash does not know is likely a typo, so both commands name it
+// on stderr without --loud (ADR 0009). stdout and the exit code are those of
+// any other fallback.
+func TestUnknownFlagIsReportedWithoutLoud(t *testing.T) {
+	tests := []struct {
+		args       []string
+		wantStdout string
+		wantStderr string
+	}{
+		{[]string{"check", "deploy-pament"}, "false\n", "releash: flag \"deploy-pament\" not found; returning false\n"},
+		{[]string{"variant", "deploy-pament"}, "RELEASH_DEPLOY_PAMENT_ENABLED=false\nRELEASH_DEPLOY_PAMENT_VARIANT=disabled\n", "releash: flag \"deploy-pament\" not found; returning disabled variant\n"},
+	}
+	for _, tt := range tests {
+		t.Run(strings.Join(tt.args, " "), func(t *testing.T) {
+			unleashEnv(t, map[string]string{"UNLEASH_URL": testURL, "UNLEASH_API_TOKEN": testToken})
+			var stdout, stderr bytes.Buffer
+
+			code := execute(tt.args, &stdout, &stderr, "dev")
+
+			assert.Equal(t, releash.ExitOK, code, "exit code")
+			assert.Equal(t, tt.wantStdout, stdout.String(), "stdout")
+			assert.Equal(t, tt.wantStderr, stderr.String(), "stderr")
+		})
+	}
 }
